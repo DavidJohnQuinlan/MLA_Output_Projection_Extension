@@ -3,15 +3,15 @@ import wandb
 from torch.optim import AdamW
 from transformers import DataCollatorWithPadding, AutoTokenizer
 
-from model_training import ModelPreTraining
-from models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
-from models.BERT.bert_model.bert_config import BertConfig
-from models.BERT.configuration.configuration import PreTrainConfig, FineTuneConfig
-from models.BERT.configuration.hyperparameters import PreTrainingHyperparameters, FineTuneHyperparameters
-from model_training import ModelFineTuning
-from utils.utils import set_all_seeds
-from utils.model_utils import ClassificationMetricEvaluation
-from utils.data_preparation import import_and_prepare_data, prepare_dataloaders
+from mla.model_training import ModelPreTraining
+from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
+from mla.models.BERT.bert_model.bert_config import BertConfig
+from mla.config.configuration import PreTrainConfig, FineTuneConfig
+from mla.config.hyperparameters import PreTrainingHyperparameters, FineTuneHyperparameters
+from mla.model_training import ModelFineTuning
+from mla.utils.utils import set_all_seeds
+from mla.utils.model_utils import ClassificationMetricEvaluation
+from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 
 
 def prepare_fine_tune_data(ft_cfg, ft_hp):

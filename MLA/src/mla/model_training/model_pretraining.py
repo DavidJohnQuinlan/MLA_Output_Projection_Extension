@@ -2,14 +2,14 @@ import torch
 from transformers import AutoTokenizer
 from torch.optim import AdamW
 
-from models.BERT.configuration.hyperparameters import PreTrainingHyperparameters
-from models.BERT.configuration.configuration import PreTrainConfig
-from models.BERT.bert_model.bert_config import BertConfig
-from models.BERT.bert_model.bert_heads import BertModelForMLM
-from model_training import ModelPreTraining
-from utils.utils import count_params
-from utils.model_utils import MetricEvaluation
-from utils.data_preparation import import_and_prepare_data, prepare_dataloaders
+from mla.config.hyperparameters import PreTrainingHyperparameters
+from mla.config.configuration import PreTrainConfig
+from mla.models.BERT.bert_model.bert_config import BertConfig
+from mla.models.BERT.bert_model.bert_heads import BertModelForMLM
+from mla.model_training import ModelPreTraining
+from mla.utils.utils import count_params
+from mla.utils.model_utils import MetricEvaluation
+from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 
 
 def model_pretraining():

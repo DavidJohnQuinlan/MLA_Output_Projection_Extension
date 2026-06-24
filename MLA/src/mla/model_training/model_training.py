@@ -12,12 +12,12 @@ from typing import Optional, Dict
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-
-from models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
-from models.BERT.configuration.configuration import PreTrainConfig, FineTuneConfig
-from models.BERT.configuration.hyperparameters import PreTrainingHyperparameters, FineTuneHyperparameters
-from utils.model_utils import MetricEvaluation, ClassificationMetricEvaluation, LossMeter
-from utils.utils import safe_hook_variable_gradient_stats
+from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
+from mla.models.BERT.configuration.hyperparameters import PreTrainingHyperparameters, FineTuneHyperparameters
+from mla.utils.model_utils import MetricEvaluation, ClassificationMetricEvaluation, LossMeter
+from mla.utils.utils import safe_hook_variable_gradient_stats
+from mla.config.configuration import PreTrainConfig, FineTuneConfig
+wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
 
 class BaseModelTraining:
@@ -51,8 +51,6 @@ class BaseModelTraining:
             self.wandb_mode = "online"
         else:
             self.wandb_mode = "offline"
-
-        wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
         
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.hp.gradient_accumulation_steps,
