@@ -3,71 +3,66 @@ import torch
 import os
 import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
+from omegaconf import OmegaConf, DictConfig
+from abc import ABC, abstractmethod
+from typing import Tuple
 
 from pathlib import Path
-from torch.optim import AdamW
+from torch.optim import Optimizer
+from torch import nn
 from accelerate import Accelerator
-from transformers import get_cosine_schedule_with_warmup
-from typing import Optional, Dict
+from transformers import get_cosine_schedule_with_warmup, PretrainedConfig
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
-from mla.models.BERT.configuration.hyperparameters import PreTrainingHyperparameters, FineTuneHyperparameters
-from mla.utils.model_utils import MetricEvaluation, ClassificationMetricEvaluation, LossMeter
-from mla.utils.utils import safe_hook_variable_gradient_stats
-from mla.config.configuration import PreTrainConfig, FineTuneConfig
+from mla.config.paths import Paths
+from mla.utils.model_utils import MetricEvaluationProtocol, LossMeter
+from mla.utils.utils import safe_hook_variable_gradient_stats, setup_wandb, get_device
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
 
-class BaseModelTraining:
+class BaseModelTraining(ABC):
     """
-    A class that contains methods to help with training/fine-tuning a BERT model. Accelerator is used to abstract out some of the 
+    A class that contains methods to help with pre-training/fine-tuning a model. Accelerator is used to abstract out some of the 
     more complex model training/fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of 
     metrics locally and to WandB. 
 
     Attributes:
-        model (BertModelForMLM): TinyBERT model as defined by the TinyBERT configuration.
-        optimizer (AdamW): Classic AdamW optimizer.
-        metric_fn (MetricEvaluation): Class that handles the collection and calculation of both training and validation metrics.
-        config (Config): General experiment configuration.
-        hyperparameters (Hyperparameters): General experiment hyperparameters.
+        model (nn.Module): Model as defined by the configuration.
+        optimizer (Optimizer): Classic optimizer.
+        metric_fn (MetricEvaluationProtocol): Class that handles the collection and calculation of both training and validation metrics.
+        config (DictConfig): General experiment configuration.
     """
-
     def __init__(
         self, 
-        model: BertModelForMLM | BERTModelForClassification, 
-        optimizer: AdamW,
-        metric_fn: MetricEvaluation | ClassificationMetricEvaluation, 
-        config: PreTrainConfig | FineTuneConfig, 
-        hyperparameters: PreTrainingHyperparameters | FineTuneHyperparameters,
-    ):
-        self.cfg = config
-        self.hp = hyperparameters
-
-        wandb_pw = os.getenv("WANDB_PW")
-        if wandb_pw:
-            wandb.login(key=wandb_pw)
-            self.wandb_mode = "online"
-        else:
-            self.wandb_mode = "offline"
+        model: nn.Module, 
+        optimizer: type[Optimizer],
+        metric_fn: type[MetricEvaluationProtocol], 
+        config: DictConfig,
+        paths: Paths,
+    ): 
         
+        self.training_bar = None
+        self.eval_bar = None
+        self.scheduler = None
+
+        self.config = config
         self.accelerator = Accelerator(
-            gradient_accumulation_steps=self.hp.gradient_accumulation_steps,
-            mixed_precision=self.hp.mixed_precision
+            gradient_accumulation_steps=self.config.gradient_accumulation_steps,
+            mixed_precision=self.config.mixed_precision
         )
-        self.optimizer = self._apply_weight_decay(model, optimizer)
+        self.optimizer = self._build_optimizer(model, optimizer)
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)
         self.metric_fn = metric_fn()
-        
-        self.model_file_path = self.cfg.paths.local.model_file_path
+        self.model_file_path = paths.model_file_path
         
         self.global_step = 0
         self.last_logged_global_step = 0
         self.epoch = 0
-        self.stop_training = False
         self.best_eval_loss = float("inf")
-        
+        self._train_step_start_time = None
+        self._eval_step_start_time = None
+    
     def _setup_scheduler(self) -> None:
         """
         Configures the learning rate scheduler with a warmup phase and cosine decay.
@@ -76,34 +71,37 @@ class BaseModelTraining:
         """
 
         # Define warmup steps as a percentage of the total schedule
-        warmup_steps = max(1, int(self.hp.max_steps * self.hp.warmup_rate)) if self.hp.warmup else 0
+        warmup_steps = max(1, int(self.config.max_steps * self.config.warmup_rate)) if self.config.warmup else 0
 
         # Initialize the scheduler: Linear increase followed by Cosine decrease
         self.scheduler = get_cosine_schedule_with_warmup(
             self.optimizer, 
             num_warmup_steps=warmup_steps, 
-            num_training_steps=self.hp.max_steps
+            num_training_steps=self.config.max_steps
         )
 
         # Prepare for distributed/accelerated training
         self.scheduler = self.accelerator.prepare(self.scheduler)
 
-    def _apply_weight_decay(self, model, optimizer):
+    def _build_optimizer(self, model: nn.Module, optimizer: type[Optimizer]) -> Optimizer:
         """
-        If activated do not apply weight decay to biases and norm layer.
+        Build the optimizer, if weight decay is non-zero apply weight decay to all parameters bar bias's and norm layers.
 
         Args:
-            model: Model whose biases and norm layer where weight decay will not be applied.
-            hp: Model hyperparmeters defining the weight decay value.
+            model (nn.Module): Model whose biases and norm layer where weight decay will not be applied.
+            optimizer (Optimizer): The optimization strategy.
+
+        Returns:
+            Optimizer: Instantiated optimizer ready for training.
         """
         no_decay = ["bias", "LayerNorm.weight"]
 
-        if self.hp.weight_decay != 0.0:
+        if self.config.weight_decay != 0.0:
 
             optimizer_grouped_parameters = [
                 {
                     "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-                    "weight_decay": self.hp.weight_decay,
+                    "weight_decay": self.config.weight_decay,
                 },
                 {
                     "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
@@ -111,29 +109,21 @@ class BaseModelTraining:
                 },
             ]
 
-            optimizer = optimizer(optimizer_grouped_parameters, lr=self.hp.learning_rate)
+            optimizer = optimizer(optimizer_grouped_parameters, lr=self.config.learning_rate)
+        else:
+            optimizer = optimizer(model.parameters(), lr=self.config.learning_rate)
         return optimizer
 
     def _init_progress_bars(
         self, 
-        training_dataloader: Optional[DataLoader]=None, 
-        eval_dataloader: Optional[DataLoader]=None, 
+        training_dataloader: DataLoader | None = None, 
+        eval_dataloader: DataLoader | None = None, 
         reset: bool = False, 
-        mode: Optional[str] = None,
-        epoch: Optional[int] = None
+        mode: str | None = None,
+        epoch: int | None = None
     ) -> None:
         """
         Initializes or resets training/evaluation tqdm progress bars.
-
-        This method ensures that full length training/evaluation bars appear at the very beginning of model training. It also ensures 
-        that when entering a new epoch or a new evaluation step that the progress bar is cleared and reset.
-
-        Args:
-            training_dataloader (DataLoader, optional): Training set to determine progress bar length. Defaults to None.
-            eval_dataloader (DataLoader, optional): Evaluation set to determine progress bar length. Defaults to None.
-            reset (bool): Whether to refresh an existing progress bar's state. Defaults to False.
-            mode (str, optional): The target progress bar to reset; must be "train", "eval" or "post_training_eval". Defaults to None.
-            epoch (int, defaults to None): Current epoch index for labeling. Defaults to None.
         """
         
         # Updates existing progress bars without creating new objects
@@ -157,14 +147,6 @@ class BaseModelTraining:
     def _update_progress_bars(self, mode: str, loss_value: float) -> None:
         """
         Update the training or evaluation tqdm progress bar.
-
-        Due to implementation restrictions it was necessary to manually update the training/evaluation progress bars. 
-        The global step was also included to help the user understand how far along we are in the model training.
-
-        Args:
-            mode (str): The target bar to update; must be "train", "eval" or "post_training_eval".
-            loss_value (float): The loss value to include in the bar update.
-            
         """
         if mode == "train":
             self.training_bar.update(1)
@@ -184,6 +166,26 @@ class BaseModelTraining:
         if self.training_bar: self.training_bar.close()
         if self.eval_bar: self.eval_bar.close()
 
+    def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
+        """
+        Defines whether the current model is better than the best loss value. 
+        """
+        if eval_loss.avg < self.best_eval_loss:
+            self.best_eval_loss = eval_loss.avg
+            return True
+        return False
+
+    @abstractmethod
+    def _log_metrics(
+        self,
+        mode: str,
+        loss: LossMeter,
+        metrics: dict,
+        steps_per_sec: float,
+        samples_per_sec: float,
+        total_norm: float | None = None,
+    ) -> None: ...
+
     def _run_optimization_loop(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
         """
         Main method which details all steps taken during model training. These include defining the warm-up scheduler, preparing 
@@ -193,7 +195,6 @@ class BaseModelTraining:
             training_dataloader (DataLoader): The pre-batched training dataset.
             eval_dataloader (DataLoader): The pre-batched evaluation dataset.
         """
-
         training_dataloader, eval_dataloader = self.accelerator.prepare(
             training_dataloader, eval_dataloader
         )
@@ -202,7 +203,7 @@ class BaseModelTraining:
         self._train_step_start_time = time.time()
 
         # For each step
-        while self.global_step < self.hp.max_steps:
+        while self.global_step < self.config.max_steps:
             
             # Prepare for model training
             self.epoch += 1
@@ -213,8 +214,8 @@ class BaseModelTraining:
             self._init_progress_bars(training_dataloader=training_dataloader, reset=True, mode="train", epoch=self.epoch)
 
             # For each batch (starting at 1)
-            for i, batch in enumerate(training_dataloader, start=1):
-                if self.global_step >= self.hp.max_steps:
+            for batch in training_dataloader:
+                if self.global_step >= self.config.max_steps:
                     break
 
                 # Automatically perform gradient accumulation
@@ -226,20 +227,20 @@ class BaseModelTraining:
                     self.accelerator.backward(loss)
 
                     # Logging
-                    self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=None)
+                    self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode="train")
                     training_loss.update(loss.item(), n=batch["input_ids"].size(0))
                     self._update_progress_bars(mode="train", loss_value=training_loss.avg)           
 
                     # Update the gradients
                     if self.accelerator.sync_gradients:
-                        total_norm = self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.hp.max_norm).item()
+                        total_norm = self.accelerator.clip_grad_norm_(self.model.parameters(), max_norm=self.config.max_norm).item()
                         self.optimizer.step()
                         self.scheduler.step()
                         self.optimizer.zero_grad()
                         self.global_step += 1
                     
                         # Update logs and metrics every N steps
-                        if (self.global_step % self.hp.train_eval_steps == 0 and self.global_step > 0):
+                        if (self.global_step % self.config.train_eval_steps == 0 and self.global_step > 0):
                             if self.accelerator.is_main_process:
 
                                 # Compute and log the training metrics
@@ -249,7 +250,7 @@ class BaseModelTraining:
                                 update_steps = self.global_step - self.last_logged_global_step
                                 steps_per_sec = update_steps / elapsed
                                 
-                                samples_per_sec = (update_steps * self.hp.batch_size * self.hp.gradient_accumulation_steps) / elapsed
+                                samples_per_sec = (update_steps * self.config.batch_size * self.config.gradient_accumulation_steps) / elapsed
                                 
                                 self._log_metrics(
                                     mode="train",
@@ -265,33 +266,25 @@ class BaseModelTraining:
                                 training_loss = LossMeter()
                                 self.last_logged_global_step = self.global_step
                                 self._train_step_start_time = time.time()
-                        print("self.global_step", self.global_step, self.hp.eval_steps)
-                        if (self.global_step % self.hp.eval_steps == 0 and self.global_step > 0):
+
+                        if (self.global_step % self.config.eval_steps == 0 and self.global_step > 0):
                             if self.accelerator.is_main_process:
                                 
                                 # Evaluate the current model on the evaluation dataset
-                                eval_loss, _ = self.eval_model(eval_dataloader)
-
+                                eval_loss, eval_metrics = self.eval_model(eval_dataloader)
                                 self.model.train()
                                 self.metric_fn.reset()
 
                                 # Save the best model
-                                if eval_loss.avg < self.best_eval_loss:
-                                    self.best_eval_loss = eval_loss.avg
+                                if self._is_best_model(eval_loss, eval_metrics):
                                     self.save_model()
-                
-        # Close off the wandb logging
         self._close_progress_bars()
-        
-        # Stop recording the models parameters
-        wandb.unwatch()
-        wandb.finish()
-    
-    def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> Dict[str, float]:
+            
+    def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> Tuple[LossMeter, dict]:
         """
         Evaluate the model on some pre-batched dataset.
 
-        Calculate the evaluation metrics and loss for the model, can be envoked either during or after model training.
+        Calculate the evaluation metrics and loss for the model, can be invoked either during or after model training.
 
         Args:
             eval_dataloader (DataLoader): The pre-batched evaluation dataset.
@@ -341,64 +334,65 @@ class BaseModelTraining:
         """
         Unwraps the model from the Accelerator environment and saves its state dict locally.
         """
-
         # Ensure the directory to store the model locally exist
         self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Unwrap the accelerator model
-        unwrapped_model = self.accelerator.unwrap_model(self.model)._orig_mod
+        unwrapped_model = self.accelerator.unwrap_model(self.model)
+        model_to_save = unwrapped_model._orig_mod if hasattr(unwrapped_model, "_orig_mod") else unwrapped_model
 
         # Save the unwrapped models state dict locally
-        print("self.model_file_path", self.model_file_path)
-        self.accelerator.save(unwrapped_model.state_dict(), self.model_file_path)
+        self.accelerator.save(model_to_save.state_dict(), self.model_file_path)
 
     @classmethod
     def load_model(
         cls, 
         model_class: type[torch.nn.Module], 
-        model_config, 
+        model_config: PretrainedConfig, 
         checkpoint_path: str | Path,
     ) -> torch.nn.Module:
         """
-        Factory method to instantiate a BERT model architecture and load its saved weights.
+        Factory method to instantiate a model architecture and load its saved weights.
         """
+        device = get_device()
         model = model_class(model_config)
-        state_dict = torch.load(checkpoint_path, weights_only=True)
+        state_dict = torch.load(checkpoint_path, weights_only=True, map_location=device)
         model.load_state_dict(state_dict)
-        return model
+        return model.to(device)
 
 
 class ModelPreTraining(BaseModelTraining):
     """
-    A class that contains methods to help with training a BERT model. Accelerator is used to abstract out some of the more complex model 
+    A class that contains methods to help with training a model. Accelerator is used to abstract out some of the more complex model 
     training logic. This class also contains methods to define the warm-up scheduler, the logging of metrics locally and to WandB.
 
     Attributes:
-        model (BertModelForMLM): TinyBERT model as defined by the TinyBERT configuration.
-        optimizer (AdamW): Classic AdamW optimizer.
-        metric_fn (MetricEvaluation): Class that handles the collection and calculation of both training and validation metrics.
-        config (Config): General experiment configuration.
-        hyperparameters (Hyperparameters): General experiment hyperparameters.
+        model (nn.Module): Model we wish to train.
+        optimizer (Optimizer): Optimization method.
+        metric_fn (MetricEvaluationProtocol): Class that handles the collection and calculation of both training and validation metrics.
+        config (DictConfig): General model/experiment configuration.
+        paths (Paths): Paths to data/models.
     """
 
     def __init__(
         self, 
-        model: BertModelForMLM, 
-        optimizer: AdamW, 
-        metric_fn: MetricEvaluation, 
-        config, 
-        hyperparameters,
+        model: nn.Module, 
+        optimizer: type[Optimizer],
+        metric_fn: type[MetricEvaluationProtocol], 
+        config: DictConfig,
+        paths: Paths,
     ):
-        super().__init__(model, optimizer, metric_fn, config, hyperparameters)
+        super().__init__(model, optimizer, metric_fn, config, paths)
+        self.wandb_mode = setup_wandb()
         wandb.init(
-            project=self.cfg.experiment_project,
-            group=self.cfg.experiment_name, 
-            name=f"MLA_PT__kv_{self.hp.kv_compression_dim}_q_{self.hp.q_compression_dim}",
-            job_type=self.cfg.job_type, 
-            config={**vars(self.cfg), **vars(self.hp)},# , **vars(tiny_bert_config)}
+            project=self.config.experiment_project,
+            group=self.config.experiment_name, 
+            name=self.config.pretrained_model_name,
+            job_type=self.config.job_type, 
+            config=OmegaConf.to_container(self.config, resolve=True),
             mode=self.wandb_mode,
         )
-        wandb.watch(self.model, log="all", log_freq=self.hp.eval_steps)
+        wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.history = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
         
     def _log_metrics(
@@ -408,7 +402,7 @@ class ModelPreTraining(BaseModelTraining):
         metrics: dict, 
         steps_per_sec: float,
         samples_per_sec: float,
-        total_norm: Optional[float]=None
+        total_norm: float | None = None
     ) -> None:
         """
         Log the training or evaluation loss and metrics to wandb UI and to local dictionary.
@@ -417,7 +411,8 @@ class ModelPreTraining(BaseModelTraining):
             mode (str): The target bar to update; must be "train" or "eval".
             loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages. 
             metrics (dict): Dictionary containing training or evaluation metrics.
-            steps_per_sec (float, optional): Number of steps taken per second.
+            steps_per_sec (float): Number of steps taken per second.
+            samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
         """    
         self.history[f"{mode}_loss"].append(loss.avg)
@@ -442,32 +437,46 @@ class ModelPreTraining(BaseModelTraining):
 
     def train_model(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, eval_dataloader)
+        wandb.unwatch()
+        wandb.finish()
 
 
 class ModelFineTuning(BaseModelTraining):
     """
-    A class that contains methods to help with fine-tuning a BERT model. Accelerator is used to abstract out some of the more complex 
+    A class that contains methods to help with fine-tuning a model. Accelerator is used to abstract out some of the more complex 
     model fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of metrics locally and to 
     WandB. 
 
     Attributes:
-        model (BertModelForMLM): TinyBERT model as defined by the TinyBERT configuration.
-        optimizer (AdamW): Classic AdamW optimizer.
-        metric_fn (MetricEvaluation): Class that handles the collection and calculation of both training and validation metrics.
-        config (Config): General experiment configuration.
-        hyperparameters (Hyperparameters): General experiment hyperparameters.
+        model (nn.Module): Model we wish to train.
+        optimizer (Optimizer): Optimization method.
+        metric_fn (MetricEvaluationProtocol): Class that handles the collection and calculation of both training and validation metrics.
+        config (DictConfig): General model/experiment configuration.
+        paths (Paths): Paths to data/models.
+        seed (int): The seed value of the experiment.
     """
 
     def __init__(
         self, 
-        model: BertModelForMLM, 
-        optimizer: AdamW, 
-        metric_fn: ClassificationMetricEvaluation, 
-        config: FineTuneConfig, 
-        hyperparameters: FineTuneHyperparameters,
+        model: nn.Module, 
+        optimizer: type[Optimizer],
+        metric_fn: type[MetricEvaluationProtocol], 
+        config: DictConfig,
+        paths: Paths,
+        seed: int,
     ):
-        super().__init__(model, optimizer, metric_fn, config, hyperparameters)
-        wandb.watch(self.model, log="all", log_freq=self.hp.eval_steps)
+        super().__init__(model, optimizer, metric_fn, config, paths)
+        self.wandb_mode = setup_wandb()
+        wandb.init(
+            project=self.config.experiment_project,
+            group=self.config.experiment_name, 
+            name=f"{self.config.fine_tuned_model_name}__seed_{seed}",
+            job_type=self.config.job_type, 
+            config=OmegaConf.to_container(self.config, resolve=True),
+            mode=self.wandb_mode,
+        )
+        wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
+        self.best_metric = 0.0
         self.history = {
             "train_loss": [], 
             "train_accuracy": [], 
@@ -488,7 +497,7 @@ class ModelFineTuning(BaseModelTraining):
         metrics: dict, 
         steps_per_sec: float,
         samples_per_sec: float,
-        total_norm: Optional[float]=None
+        total_norm: float | None = None
     ) -> None:
         """
         Log the training or evaluation loss and metrics to wandb UI and to local dictionary.
@@ -497,7 +506,8 @@ class ModelFineTuning(BaseModelTraining):
             mode (str): The target bar to update; must be "train" or "eval".
             loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages. 
             metrics (dict): Dictionary containing training or evaluation metrics.
-            steps_per_sec (float, optional): Number of steps taken per second.
+            steps_per_sec (float): Number of steps taken per second.
+            samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
         """  
 
@@ -529,6 +539,19 @@ class ModelFineTuning(BaseModelTraining):
             log_dict["eval/samples_per_sec"] = samples_per_sec
 
         wandb.log(log_dict, step=self.global_step)
+
+    def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
+        """
+        Defines whether the current model is better than the best metric value. 
+        """
+
+        eval_metric = self.config.eval_metric
+        if eval_metrics[eval_metric] > self.best_metric:
+            self.best_metric = eval_metrics[eval_metric]
+            return True
+        return False
         
     def fine_tune_model(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, eval_dataloader)
+        wandb.unwatch()
+        wandb.finish()

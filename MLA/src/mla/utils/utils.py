@@ -4,7 +4,18 @@ import functools
 import time
 import wandb.integration.torch.wandb_torch as wandb_torch
 import numpy as np
+import os
 
+
+def get_device() -> torch.device:
+    """
+    Define the device of compute resources.
+    """
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
 
 def set_all_seeds(seed=42):
     """
@@ -70,7 +81,16 @@ def measure_inference_speed(model, tokenizer, n_runs=100):
     print(f"Inference: {ms_per_sample:.2f}ms per sample")
     return ms_per_sample
 
-    
+def setup_wandb() -> str:
+    """
+    Login and use W&B online otherwise, if password is missing use offline.
+    """
+    wandb_pw = os.getenv("WANDB_PW")
+    if wandb_pw:
+        wandb.login(key=wandb_pw)
+        return "online"
+    return "offline"
+
 def safe_callback(grad, log_track, self_instance, name):
     # Catch missing or unallocated gradients safely
     if grad is None:

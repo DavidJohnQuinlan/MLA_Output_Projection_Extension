@@ -2,6 +2,9 @@ wandb
 data
 models/
 notebooks/
+outputs
+training_data/ 
+training_models/
 
 .DS_Store
 mla.egg-info

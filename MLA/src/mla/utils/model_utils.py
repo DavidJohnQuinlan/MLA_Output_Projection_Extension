@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from typing import Dict
+from typing import Dict, Protocol
 from sklearn.metrics import recall_score, precision_score, f1_score
 
 
@@ -61,6 +61,13 @@ class LossMeter:
             return str(self.val)
         return f"{self.val:.4f}, {self.avg:.4f}"
 
+
+class MetricEvaluationProtocol(Protocol):
+    def reset(self) -> None: ...
+    def update(self, logits, labels, mode) -> None: ...
+    def compute(self) -> dict: ...
+
+
 class MetricEvaluation:
     """
     Computes and aggregates accuracy metrics (Top-1 and Top-5) for Masked Language Modeling.
@@ -98,7 +105,7 @@ class MetricEvaluation:
                 Shape can be 3D `(batch_size, seq_len, vocab_size)` or pre-flattened 2D `(total_tokens, vocab_size)`.
             labels (torch.Tensor): Ground-truth target token matrix matching the spatial structure 
                 of logits. Elements to bypass must be set to `-100`. Shape: `(batch_size, seq_len)` or `(total_tokens,)`.
-            include_top5 (bool, optional): Determines whether to calculate and store multi-rank 
+            mode (bool, optional): Determines whether to calculate and store multi-rank 
                 top-5 matching indexes alongside basic top-1 accuracy. Defaults to `False`.
         """
         # Filter out the -100 ignore indices

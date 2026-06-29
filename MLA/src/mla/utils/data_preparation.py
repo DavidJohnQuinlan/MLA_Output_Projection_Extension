@@ -1,13 +1,17 @@
 import torch
 from pathlib import Path
 from datasets import Dataset, load_dataset, load_from_disk
-from transformers import AutoTokenizer, DataCollatorForLanguageModeling
+from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBase
 from collections.abc import Callable
 from typing import Tuple
 from torch.utils.data import DataLoader
+from omegaconf import DictConfig
+from mla.config.paths import Paths
+from datasets.dataset_dict import DatasetDict
+from torch.utils.data.dataloader import DataLoader
 
 
-def group_texts(examples, max_length):
+def group_texts(examples: Dict, max_length: int) -> Dict:
     """
     Groups and packs tokenized sequences into uniform chunks of a fixed maximum length.
 
@@ -51,15 +55,15 @@ def group_texts(examples, max_length):
 
 
 def get_processed_dataset(
-    tokenized_dataset_path, 
-    dataset_name, 
-    dataset_config_name, 
-    tokenizer, 
-    num_proc,
-    text_column,
-    max_length=128,
-    mode="training",
-):
+    tokenized_dataset_path: str | Path, 
+    dataset_name: str, 
+    dataset_config_name: str | None, 
+    tokenizer: PreTrainedTokenizerBase, 
+    num_proc: int,
+    text_column: str,
+    max_length: int | None = 128,
+    mode: str = "training",
+) -> DatasetDict | Dataset:
     """
     Loads, tokenizes, packs, and caches a text dataset using a local disk fallback.
 
@@ -145,16 +149,16 @@ class CreateDataloaders:
     DataLoader streams, ensuring consistent worker, memory pinning, and batching 
     strategies across both execution phases.
     """
-    def __init__(self, hyperparameters):
+    def __init__(self, config: DictConfig):
         """
         Initializes the factory with shared runtime execution properties.
 
         Args:
-            hyperparameters (Hyperparameters): A configuration dataclass instance 
+            config (DictConfig): A configuration dataclass instance 
                 containing core training settings (`batch_size`, `pin_memory`, 
                 `num_workers`, `drop_last`).
         """
-        self.hp = hyperparameters
+        self.config = config
         
     def create_dataloaders(
         self, 
@@ -190,68 +194,67 @@ class CreateDataloaders:
         train_loader = DataLoader(
             train_ds, 
             shuffle=True, 
-            batch_size=self.hp.batch_size, 
-            pin_memory=self.hp.pin_memory,
-            num_workers=self.hp.num_workers,
+            batch_size=self.config.batch_size, 
+            pin_memory=self.config.pin_memory,
+            num_workers=self.config.num_workers,
             collate_fn=train_collator,
-            drop_last=self.hp.drop_last,
+            drop_last=self.config.drop_last,
         )
         
         eval_loader = DataLoader(
             eval_ds, 
             shuffle=False, 
-            batch_size=self.hp.eval_batch_size, 
-            pin_memory=self.hp.pin_memory,
-            num_workers=self.hp.num_workers,
+            batch_size=self.config.eval_batch_size, 
+            pin_memory=self.config.pin_memory,
+            num_workers=self.config.num_workers,
             collate_fn=eval_collator
         )
     
         return train_loader, eval_loader
     
 
-def import_and_prepare_data(tokenizer, cfg, hp):
-
-    # Import and tokenized dataset or load if already tokenized
+def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConfig, paths: Paths) -> DatasetDict:
+    """
+    Import and tokenized dataset or load if already tokenized.
+    """
     dataset = get_processed_dataset(
-        cfg.paths.local.local_training_data_path, 
-        cfg.dataset_name,
-        cfg.dataset_config_name,
+        paths.tokenized_data_path, 
+        config.dataset_name,
+        config.dataset_config_name,
         tokenizer,
-        num_proc=hp.parallel_processes,
-        text_column=hp.text_column,
-        max_length=hp.max_seq_length,
-        mode=hp.mode,
+        num_proc=config.parallel_processes,
+        text_column=config.text_column,
+        max_length=config.max_seq_length,
+        mode=config.mode,
     )
 
     return dataset
 
-def prepare_dataloaders(dataset, tokenizer, hp, collator_fn=None):
-
-    if hp.mode == "training":
+def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> Tuple[DataLoader, DataLoader]:
+    if config.mode == "pre_training":
 
         # Define a seperate training and evaluation data collator
         train_collator = DataCollatorForLanguageModeling(
             tokenizer=tokenizer, 
-            mlm=hp.mlm, 
-            mlm_probability=hp.mlm_probability
+            mlm=config.mlm, 
+            mlm_probability=config.mlm_probability
         )
 
         # This guarantees that the validation metric remains perfectly stable and comparable
         eval_collator = DeterministicDataCollator(
             tokenizer=tokenizer, 
-            mlm=hp.mlm, 
-            mlm_probability=hp.mlm_probability
+            mlm=config.mlm, 
+            mlm_probability=config.mlm_probability
         )
     
-    elif hp.mode == "fine-tuning":
+    elif config.mode == "fine_tuning":
         train_collator = eval_collator = collator_fn(tokenizer=tokenizer)
 
     # Prepare the dataloaders
-    train_loader, val_loader = CreateDataloaders(hyperparameters=hp).create_dataloaders(
+    train_loader, val_loader = CreateDataloaders(config).create_dataloaders(
         dataset["train"].select(range(100)),
         dataset["validation"].select(range(100)),
         train_collator,
         eval_collator,
     )
-
     return train_loader, val_loader
