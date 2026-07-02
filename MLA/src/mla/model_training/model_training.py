@@ -22,9 +22,9 @@ wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_grad
 
 class BaseModelTraining(ABC):
     """
-    A class that contains methods to help with pre-training/fine-tuning a model. Accelerator is used to abstract out some of the 
-    more complex model training/fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of 
-    metrics locally and to WandB. 
+    A class that contains methods to help with pre-training/fine-tuning a model. Accelerator is used to abstract out some of the
+    more complex model training/fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of
+    metrics locally and to WandB.
 
     Attributes:
         model (nn.Module): Model as defined by the configuration.
@@ -33,14 +33,14 @@ class BaseModelTraining(ABC):
         config (DictConfig): General experiment configuration.
     """
     def __init__(
-        self, 
-        model: nn.Module, 
+        self,
+        model: nn.Module,
         optimizer: type[Optimizer],
-        metric_fn: type[MetricEvaluationProtocol], 
+        metric_fn: type[MetricEvaluationProtocol],
         config: DictConfig,
         paths: Paths,
-    ): 
-        
+    ):
+
         self.training_bar = None
         self.eval_bar = None
         self.scheduler = None
@@ -54,7 +54,7 @@ class BaseModelTraining(ABC):
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)
         self.metric_fn = metric_fn()
         self.model_file_path = paths.model_file_path
-        
+
         self.global_step = 0
         self.last_logged_global_step = 0
         self.epoch = 0
@@ -64,11 +64,11 @@ class BaseModelTraining(ABC):
         self.best_eval_metrics = None
         self.best_loss_metrics = None
 
-    
+
     def _setup_scheduler(self) -> None:
         """
         Configures the learning rate scheduler with a warmup phase and cosine decay.
-        
+
         The total number of steps and number of warmup steps are calculated based on the total number of training steps.
         """
 
@@ -77,8 +77,8 @@ class BaseModelTraining(ABC):
 
         # Initialize the scheduler: Linear increase followed by Cosine decrease
         self.scheduler = get_cosine_schedule_with_warmup(
-            self.optimizer, 
-            num_warmup_steps=warmup_steps, 
+            self.optimizer,
+            num_warmup_steps=warmup_steps,
             num_training_steps=self.config.max_steps
         )
 
@@ -117,23 +117,23 @@ class BaseModelTraining(ABC):
         return optimizer
 
     def _init_progress_bars(
-        self, 
-        training_dataloader: DataLoader | None = None, 
-        eval_dataloader: DataLoader | None = None, 
-        reset: bool = False, 
+        self,
+        training_dataloader: DataLoader | None = None,
+        eval_dataloader: DataLoader | None = None,
+        reset: bool = False,
         mode: str | None = None,
         epoch: int | None = None
     ) -> None:
         """
         Initializes or resets training/evaluation tqdm progress bars.
         """
-        
+
         # Updates existing progress bars without creating new objects
         if reset:
             if mode == "train" and training_dataloader is not None:
                 self.training_bar.set_description(f"Epoch {epoch}")
                 self.training_bar.reset(total=len(training_dataloader))
-        
+
             elif mode == "eval" and eval_dataloader is not None:
                 self.eval_bar.set_description(f"Eval @ Step {self.global_step}")
                 self.eval_bar.reset(total=len(eval_dataloader))
@@ -145,7 +145,7 @@ class BaseModelTraining(ABC):
         else:
             self.training_bar = tqdm(total=len(training_dataloader), position=0, desc="Training - Epoch 1", leave=True)
             self.eval_bar = tqdm(total=len(eval_dataloader), position=1, desc="Validation", leave=True)
- 
+
     def _update_progress_bars(self, mode: str, loss_value: float) -> None:
         """
         Update the training or evaluation tqdm progress bar.
@@ -153,7 +153,7 @@ class BaseModelTraining(ABC):
         if mode == "train":
             self.training_bar.update(1)
             self.training_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
-        
+
         elif mode == "eval":
             self.eval_bar.update(1)
             self.eval_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
@@ -170,7 +170,7 @@ class BaseModelTraining(ABC):
 
     def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
         """
-        Defines whether the current model is better than the best loss value. 
+        Defines whether the current model is better than the best loss value.
         """
         if eval_loss.avg < self.best_eval_loss:
             self.best_eval_loss = eval_loss.avg
@@ -190,7 +190,7 @@ class BaseModelTraining(ABC):
 
     def _run_optimization_loop(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
         """
-        Main method which details all steps taken during model training. These include defining the warm-up scheduler, preparing 
+        Main method which details all steps taken during model training. These include defining the warm-up scheduler, preparing
         the training and evaluation datasets and subsequently iterating through them during model training.
 
         Args:
@@ -206,7 +206,7 @@ class BaseModelTraining(ABC):
 
         # For each step
         while self.global_step < self.config.max_steps:
-            
+
             # Prepare for model training
             self.epoch += 1
             self.model.train()
@@ -222,7 +222,7 @@ class BaseModelTraining(ABC):
 
                 # Automatically perform gradient accumulation
                 with self.accelerator.accumulate(self.model):
-                    
+
                     # Forward and backward pass
                     outputs = self.model(**batch)
                     loss = outputs.loss
@@ -231,7 +231,7 @@ class BaseModelTraining(ABC):
                     # Logging
                     self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode="train")
                     training_loss.update(loss.item(), n=batch["input_ids"].size(0))
-                    self._update_progress_bars(mode="train", loss_value=training_loss.avg)           
+                    self._update_progress_bars(mode="train", loss_value=training_loss.avg)
 
                     # Update the gradients
                     if self.accelerator.sync_gradients:
@@ -240,27 +240,27 @@ class BaseModelTraining(ABC):
                         self.scheduler.step()
                         self.optimizer.zero_grad()
                         self.global_step += 1
-                    
+
                         # Update logs and metrics every N steps
                         if (self.global_step % self.config.train_eval_steps == 0 and self.global_step > 0):
                             if self.accelerator.is_main_process:
 
                                 # Compute and log the training metrics
                                 training_metrics = self.metric_fn.compute()
-                                
+
                                 elapsed = time.time() - self._train_step_start_time
                                 update_steps = self.global_step - self.last_logged_global_step
                                 steps_per_sec = update_steps / elapsed
-                                
+
                                 samples_per_sec = (update_steps * self.config.batch_size * self.config.gradient_accumulation_steps) / elapsed
-                                
+
                                 self._log_metrics(
                                     mode="train",
                                     loss=training_loss,
                                     metrics=training_metrics,
                                     steps_per_sec=steps_per_sec,
                                     samples_per_sec=samples_per_sec,
-                                    total_norm=total_norm, 
+                                    total_norm=total_norm,
                                 )
 
                                 # Reset the metrics and loss after logging
@@ -271,9 +271,9 @@ class BaseModelTraining(ABC):
 
                         if (self.global_step % self.config.eval_steps == 0 and self.global_step > 0):
                             if self.accelerator.is_main_process:
-                                
+
                                 # Evaluate the current model on the evaluation dataset
-                                eval_loss, eval_metrics = self.eval_model(eval_dataloader)
+                                eval_loss, eval_metrics = self.eval_model(eval_dataloader=eval_dataloader, training_eval=False)
                                 self.model.train()
                                 self.metric_fn.reset()
 
@@ -283,7 +283,7 @@ class BaseModelTraining(ABC):
                                     self.best_eval_metrics = eval_metrics
                                     self.best_loss_metrics = eval_loss
         self._close_progress_bars()
-            
+
     def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
         """
         Evaluate the model on some pre-batched dataset.
@@ -299,11 +299,11 @@ class BaseModelTraining(ABC):
         self.model.eval()
         self.metric_fn.reset()
         eval_loss = LossMeter()
-        
+
         eval_dataloader = self.accelerator.prepare(eval_dataloader)
         self._init_progress_bars(eval_dataloader=eval_dataloader, reset=True, mode=mode)
         self._eval_step_start_time = time.time()
-        
+
         with torch.no_grad():
             for batch in eval_dataloader:
 
@@ -316,22 +316,22 @@ class BaseModelTraining(ABC):
                 self._update_progress_bars(mode=mode, loss_value=eval_loss.avg)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
                 eval_metrics = self.metric_fn.compute()
-                
+
             elapsed = time.time() - self._eval_step_start_time
             steps_per_sec = len(eval_dataloader) / elapsed
             samples_per_sec = len(eval_dataloader.dataset) / elapsed
 
-            # If evaluating post training run 
+            # If evaluating post training run
             if training_eval:
                 self._log_metrics(
                     mode="val",
-                    loss=eval_loss, 
+                    loss=eval_loss,
                     metrics=eval_metrics,
                     steps_per_sec=steps_per_sec,
                     samples_per_sec=samples_per_sec,
                 )
             self.metric_fn.reset()
-        
+
         return eval_loss, eval_metrics
 
     def save_model(self) -> None:
@@ -350,9 +350,9 @@ class BaseModelTraining(ABC):
 
     @classmethod
     def load_model(
-        cls, 
-        model_class: type[torch.nn.Module], 
-        model_config: PretrainedConfig, 
+        cls,
+        model_class: type[torch.nn.Module],
+        model_config: PretrainedConfig,
         checkpoint_path: str | Path,
     ) -> torch.nn.Module:
         """
@@ -367,7 +367,7 @@ class BaseModelTraining(ABC):
 
 class ModelPreTraining(BaseModelTraining):
     """
-    A class that contains methods to help with training a model. Accelerator is used to abstract out some of the more complex model 
+    A class that contains methods to help with training a model. Accelerator is used to abstract out some of the more complex model
     training logic. This class also contains methods to define the warm-up scheduler, the logging of metrics locally and to WandB.
 
     Attributes:
@@ -379,10 +379,10 @@ class ModelPreTraining(BaseModelTraining):
     """
 
     def __init__(
-        self, 
-        model: nn.Module, 
+        self,
+        model: nn.Module,
         optimizer: type[Optimizer],
-        metric_fn: type[MetricEvaluationProtocol], 
+        metric_fn: type[MetricEvaluationProtocol],
         config: DictConfig,
         paths: Paths,
     ):
@@ -390,20 +390,20 @@ class ModelPreTraining(BaseModelTraining):
         self.wandb_mode = setup_wandb()
         wandb.init(
             project=self.config.experiment_project,
-            group=self.config.experiment_name, 
+            group=self.config.experiment_name,
             name=self.config.pretrained_model_name,
-            job_type=self.config.job_type, 
+            job_type=self.config.job_type,
             config=OmegaConf.to_container(self.config, resolve=True),
             mode=self.wandb_mode,
         )
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.history = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
-        
+
     def _log_metrics(
-        self, 
-        mode: str, 
-        loss: LossMeter, 
-        metrics: dict, 
+        self,
+        mode: str,
+        loss: LossMeter,
+        metrics: dict,
         steps_per_sec: float,
         samples_per_sec: float,
         total_norm: float | None = None
@@ -413,12 +413,12 @@ class ModelPreTraining(BaseModelTraining):
 
         Args:
             mode (str): The target bar to update; must be "train" or "eval".
-            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages. 
+            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages.
             metrics (dict): Dictionary containing training or evaluation metrics.
             steps_per_sec (float): Number of steps taken per second.
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
-        """    
+        """
         self.history[f"{mode}_loss"].append(loss.avg)
         self.history[f"{mode}_accuracy"].append(metrics["accuracy"])
 
@@ -430,7 +430,7 @@ class ModelPreTraining(BaseModelTraining):
             log_dict["train/steps_per_sec"] = steps_per_sec
             log_dict["train/samples_per_sec"] = samples_per_sec
             log_dict["train/grad_norm"] = total_norm
-        
+
         elif mode == "val":
             log_dict["eval/loss"] = loss.avg
             log_dict["eval/accuracy"] = metrics["accuracy"]
@@ -447,9 +447,9 @@ class ModelPreTraining(BaseModelTraining):
 
 class ModelFineTuning(BaseModelTraining):
     """
-    A class that contains methods to help with fine-tuning a model. Accelerator is used to abstract out some of the more complex 
-    model fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of metrics locally and to 
-    WandB. 
+    A class that contains methods to help with fine-tuning a model. Accelerator is used to abstract out some of the more complex
+    model fine-tuning logic. This class also contains methods to define the warm-up scheduler, the logging of metrics locally and to
+    WandB.
 
     Attributes:
         model (nn.Module): Model we wish to train.
@@ -461,10 +461,10 @@ class ModelFineTuning(BaseModelTraining):
     """
 
     def __init__(
-        self, 
-        model: nn.Module, 
+        self,
+        model: nn.Module,
         optimizer: type[Optimizer],
-        metric_fn: type[MetricEvaluationProtocol], 
+        metric_fn: type[MetricEvaluationProtocol],
         config: DictConfig,
         paths: Paths,
         seed: int,
@@ -473,32 +473,32 @@ class ModelFineTuning(BaseModelTraining):
         self.wandb_mode = setup_wandb()
         wandb.init(
             project=self.config.experiment_project,
-            group=self.config.experiment_name, 
+            group=self.config.experiment_name,
             name=f"{self.config.fine_tuned_model_name}__seed_{seed}",
-            job_type=self.config.job_type, 
+            job_type=self.config.job_type,
             config=OmegaConf.to_container(self.config, resolve=True),
             mode=self.wandb_mode,
         )
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.best_metric = 0.0
         self.history = {
-            "train_loss": [], 
-            "train_accuracy": [], 
-            "train_recall": [], 
-            "train_precision": [], 
-            "train_f1": [], 
-            "val_loss": [], 
+            "train_loss": [],
+            "train_accuracy": [],
+            "train_recall": [],
+            "train_precision": [],
+            "train_f1": [],
+            "val_loss": [],
             "val_accuracy": [],
-            "val_recall": [], 
-            "val_precision": [], 
-            "val_f1": [], 
+            "val_recall": [],
+            "val_precision": [],
+            "val_f1": [],
         }
 
     def _log_metrics(
-        self, 
-        mode: str, 
-        loss: LossMeter, 
-        metrics: dict, 
+        self,
+        mode: str,
+        loss: LossMeter,
+        metrics: dict,
         steps_per_sec: float,
         samples_per_sec: float,
         total_norm: float | None = None
@@ -508,12 +508,12 @@ class ModelFineTuning(BaseModelTraining):
 
         Args:
             mode (str): The target bar to update; must be "train" or "eval".
-            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages. 
+            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages.
             metrics (dict): Dictionary containing training or evaluation metrics.
             steps_per_sec (float): Number of steps taken per second.
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
-        """  
+        """
 
         self.history[f"{mode}_loss"].append(loss.avg)
         self.history[f"{mode}_accuracy"].append(metrics["accuracy"])
@@ -532,7 +532,7 @@ class ModelFineTuning(BaseModelTraining):
             log_dict["train/steps_per_sec"] = steps_per_sec
             log_dict["train/samples_per_sec"] = samples_per_sec
             log_dict["train/grad_norm"] = total_norm
-        
+
         elif mode == "val":
             log_dict["eval/loss"] = loss.avg
             log_dict["eval/accuracy"] = metrics["accuracy"]
@@ -546,7 +546,7 @@ class ModelFineTuning(BaseModelTraining):
 
     def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
         """
-        Defines whether the current model is better than the best metric value. 
+        Defines whether the current model is better than the best metric value.
         """
 
         eval_metric = self.config.eval_metric
@@ -554,7 +554,7 @@ class ModelFineTuning(BaseModelTraining):
             self.best_metric = eval_metrics[eval_metric]
             return True
         return False
-        
+
     def fine_tune_model(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, eval_dataloader)
         wandb.unwatch()

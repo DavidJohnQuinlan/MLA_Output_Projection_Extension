@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from typing import List
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING
@@ -104,7 +103,7 @@ class FineTuningConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
-    seeds: List[int] = MISSING
+    seeds: list[int] = MISSING
 
 
 cs = ConfigStore.instance()

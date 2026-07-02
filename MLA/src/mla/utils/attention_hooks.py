@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+
 from mla.model_training.model_training import BaseModelTraining
 
 
@@ -30,7 +31,7 @@ class AttentionHeadHook:
             self.model = model._orig_mod
         else:
             self.model = model
-        
+
         self.handles = []
         self.activations = {}
 
@@ -104,7 +105,7 @@ def collect_attention_head_activations(pretrainer: BaseModelTraining, val_loader
 
     # Extract the attention heads
     activations_list = list(collector.activations.values())
-    
+
     # Remove the hooks
     collector.remove()
 

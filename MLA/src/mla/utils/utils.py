@@ -4,19 +4,16 @@ import logging
 import os
 import random
 import time
-import datatime
 from pathlib import Path
-from calflops import calculate_flops
-from torch.utils.data import DataLoader
 
 import numpy as np
 import torch
 import wandb.integration.torch.wandb_torch as wandb_torch
+from calflops import calculate_flops
 from omegaconf import DictConfig
+from tabulate import tabulate
 from torch import nn
 from transformers import PreTrainedTokenizerBase
-from mla.utils.attention_hooks import collect_attention_head_activations
-from mla.utils.attention_utils import compute_model_cka
 
 import wandb
 
@@ -65,7 +62,7 @@ def safe_callback(grad, log_track, self_instance, name):
     # Catch missing or unallocated gradients safely
     if grad is None:
         return
-        
+
     # Check if tensor is valid and contains actual data elements
     if not isinstance(grad, torch.Tensor) or grad.numel() == 0:
         return
@@ -73,7 +70,7 @@ def safe_callback(grad, log_track, self_instance, name):
     # Check wandb's internal logging frequency rules
     if not wandb_torch.log_track_update(log_track):
         return
-        
+
     # Use .detach() instead of .data to remain compliant with torch.compile
     self_instance.log_tensor_stats(grad.detach(), name)
 
@@ -82,16 +79,16 @@ def safe_hook_variable_gradient_stats(self, var, name, log_track):
     # If the variable doesn't track gradients, back out early
     if not getattr(var, "requires_grad", False):
         return
-        
+
     # Ensure the internal hook dictionary exists to prevent an AttributeError
     if not hasattr(self, "_hook_handles"):
         self._hook_handles = {}
-        
+
     # Use partial to cleanly seal variables instead of a leaky lambda
     callback = functools.partial(
         safe_callback, log_track=log_track, self_instance=self, name=name
     )
-    
+
     handle = var.register_hook(callback)
     self._hook_handles[name] = handle
     return handle
@@ -120,7 +117,7 @@ def calculate_flop_metrics(model: nn.Module, config: DictConfig) -> tuple[float,
     flops, macs, params = calculate_flops(
         model=model,
         kwargs={"input_ids": dummy_ids, "attention_mask": dummy_mask},
-        print_results=True,
+        print_results=False,
         print_detailed=False
     )
     return flops, macs, params
@@ -136,15 +133,15 @@ def measure_inference_speed(model: nn.Module, tokenizer: PreTrainedTokenizerBase
         "This is a test sentence for inference speed measurement.",
         return_tensors="pt",
         padding="max_length",
-        max_length=config.max_length,
+        max_length=config.max_seq_length,
         truncation=True
     ).to(device)
-    
+
     # Warmup
     with torch.no_grad():
         for _ in range(10):
             model(**dummy_input)
-    
+
     # Measure
     start_time = time.time()
     with torch.no_grad():
@@ -153,59 +150,6 @@ def measure_inference_speed(model: nn.Module, tokenizer: PreTrainedTokenizerBase
     elapsed_time = time.time() - start_time
     ms_per_sample = (elapsed_time / n_runs) * 1000
     return ms_per_sample
-
-
-def build_pretrain_results(
-        pretrainer: ModelPreTraining, 
-        tokenizer: PreTrainedTokenizerBase,
-        val_loader: DataLoader, 
-        config: DictConfig
-    ) -> dict:
-    """
-    Build a results summary dictionary for a pretraining run.
-    """
-    flops, macs, params = calculate_flop_metrics(pretrainer.model, config)
-    ms_per_sample = measure_inference_speed(pretrainer.model, tokenizer, config)
-    activations_list = collect_attention_head_activations(pretrainer, val_loader)
-    avg_cka = compute_model_cka(activations_list)
-
-    return {
-        "model_name": config.pretrained_model_name,
-        "attention_mechanism": config.attention_mechanism,
-        "dataset": config.dataset_config_name,
-        "n_params": params,
-        "GFLOPS": flops,
-        "GMACS": macs,
-        "Inf (ms)": f"{ms_per_sample:.2f}",
-        "kv": config.kv_compression_dim,
-        "q": config.q_compression_dim,
-        "o": config.output_compression_dim,
-        "pre_training_validation_loss": f"{pretrainer.best_eval_loss:.4f}",
-        "pre_training_top1_accuracy": f"{pretrainer.best_eval_metrics.accuracy:.4f}",
-        "pre_training_top5_accuracy": f"{pretrainer.best_eval_metrics.top5_accuracy:.4f}",
-        "pre_training_cka": f"{avg_cka:.4f}",
-        "max_steps": config.max_steps,
-        "learning_rate": config.learning_rate,
-        "batch_size": config.batch_size,
-        "timestamp": datetime.now().isoformat(),
-    }
-
-
-def build_finetune_results(results: list, config: DictConfig):
-    """
-    Build a results summary dictionary across multiple finetuning runs.
-    """
-    return {
-        "model_name": config.pretrained_model_name,
-        "attention_mechanism": config.attention_mechanism,
-        "dataset": config.dataset_config_name,
-        "kv": config.kv_compression_dim,
-        "q": config.q_compression_dim,
-        "o": config.output_compression_dim,
-        "avg_finetune_validation_loss": f"{np.mean(results["loss"]):.4f} +/- {np.std(results["loss"]):.4f}",
-        "avg_finetune_accuracy_loss": f"{np.mean(results["accuracy"]):.4f} +/- {np.std(results["accuracy"]):.4f}",
-        "avg_finetune_f1_loss": f"{np.mean(results["f1"]):.4f} +/- {np.std(results["f1"]):.4f}",
-    }
 
 
 def append_to_results_csv(results: dict, csv_path: Path) -> None:
@@ -219,3 +163,14 @@ def append_to_results_csv(results: dict, csv_path: Path) -> None:
         if write_header:
             writer.writeheader()
         writer.writerow(results)
+
+
+def print_output_table(title: str, results: dict) -> None:
+    """
+    Prepare and print the table to screen.
+    """
+    results = {k: "N/A" if v is None else v for k, v in results.items()}
+    table = tabulate(results.items(), tablefmt="rounded_outline")
+    width = len(table.splitlines()[0])
+    print("\n", title.center(width))
+    print(table)

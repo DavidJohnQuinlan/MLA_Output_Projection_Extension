@@ -4,12 +4,13 @@ from typing import Protocol
 import numpy as np
 import torch
 from sklearn.metrics import f1_score, precision_score, recall_score
+
 logger = logging.getLogger(__name__)
 
 
 class LossMeter:
     """
-    Computes and stores the current value, running sum, evaluation count, 
+    Computes and stores the current value, running sum, evaluation count,
     and moving mathematical average of metrics or loss values.
 
     Attributes:
@@ -40,7 +41,7 @@ class LossMeter:
 
         Args:
             val (float): The new scalar value to register (e.g., the step loss float).
-            n (int, optional): The structural multiplier or batch size weighting associated 
+            n (int, optional): The structural multiplier or batch size weighting associated
                 with the value. Defaults to `1`.
         """
         if not np.isnan(val):
@@ -56,8 +57,8 @@ class LossMeter:
         Generates a scannable string profile displaying current and average progress.
 
         Returns:
-            str: A comma-separated description tracking the current step value and 
-                overall average, formatted to 4 decimal places. Returns a raw string 
+            str: A comma-separated description tracking the current step value and
+                overall average, formatted to 4 decimal places. Returns a raw string
                 of `val` if no steps have been recorded yet.
         """
         if self.count == 0:
@@ -75,16 +76,16 @@ class MetricEvaluation:
     """
     Computes and aggregates accuracy metrics (Top-1 and Top-5) for Masked Language Modeling.
 
-    This tracker extracts evaluation metrics strictly over active prediction targets, 
-    safely ignoring unmasked tokens flagged with the standard `-100` cross-entropy index. 
-    It maintains cumulative counts across multiple evaluation steps to return a stable, 
+    This tracker extracts evaluation metrics strictly over active prediction targets,
+    safely ignoring unmasked tokens flagged with the standard `-100` cross-entropy index.
+    It maintains cumulative counts across multiple evaluation steps to return a stable,
     dataset-wide accuracy profile upon request.
 
     Attributes:
         total_masked (int): Total number of valid masked tokens evaluated.
-        correct_t1 (int): Cumulative count of predictions where the highest-scoring model logit 
+        correct_t1 (int): Cumulative count of predictions where the highest-scoring model logit
             matched the ground-truth label.
-        correct_t5 (int): Cumulative count of predictions where the ground-truth label appeared 
+        correct_t5 (int): Cumulative count of predictions where the ground-truth label appeared
             within the top 5 highest-scoring model logits.
     """
     def __init__(self):
@@ -106,9 +107,9 @@ class MetricEvaluation:
         Args:
             logits (torch.Tensor): Unnormalized raw predictions from the language modeling head.
                 Shape can be 3D `(batch_size, seq_len, vocab_size)` or pre-flattened 2D `(total_tokens, vocab_size)`.
-            labels (torch.Tensor): Ground-truth target token matrix matching the spatial structure 
+            labels (torch.Tensor): Ground-truth target token matrix matching the spatial structure
                 of logits. Elements to bypass must be set to `-100`. Shape: `(batch_size, seq_len)` or `(total_tokens,)`.
-            mode (str, optional): Determines whether to calculate and store multi-rank 
+            mode (str, optional): Determines whether to calculate and store multi-rank
                 top-5 matching indexes alongside basic top-1 accuracy.
         """
         # Filter out the -100 ignore indices
@@ -139,18 +140,18 @@ class MetricEvaluation:
         Returns:
             dict[str, float]: A dictionary summarizing active scores. Possible keys include:
                 - `"accuracy"`: The global percentage score for Top-1 matching.
-                - `"top5_accuracy"`: The global percentage score for Top-5 matching (omitted if 
+                - `"top5_accuracy"`: The global percentage score for Top-5 matching (omitted if
                   `include_top5` was never enabled).
                 Returns an empty dictionary `{}` if no valid evaluations were registered.
         """
         if self.total_masked == 0:
             return {}
-            
+
         results = {"accuracy": self.correct_t1 / self.total_masked}
-        
+
         if self.correct_t5 > 0:
             results["top5_accuracy"] = self.correct_t5 / self.total_masked
-            
+
         return results
 
 
@@ -186,11 +187,11 @@ class ClassificationMetricEvaluation:
         """
         # Get the predicted class (the index of the highest logit)
         preds = torch.argmax(logits, dim=-1)
-        
+
         # Accumulate for simple accuracy
         self.correct += (preds == labels).sum().item()
         self.total += labels.size(0)
-        
+
         # Store for more complex metrics (F1, etc.)
         self.all_preds.extend(preds.detach().cpu().numpy())
         self.all_labels.extend(labels.detach().cpu().numpy())
@@ -199,7 +200,7 @@ class ClassificationMetricEvaluation:
         """Calculates and returns the final metrics."""
         if self.total == 0:
             return {"count": 0, "accuracy": 0.0, "recall": 0.0, "precision": 0.0, "f1": 0.0}
-        
+
         accuracy = self.correct / self.total
         recall = recall_score(self.all_labels, self.all_preds, zero_division=0)
         precision = precision_score(self.all_labels, self.all_preds, zero_division=0)

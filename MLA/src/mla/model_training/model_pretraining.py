@@ -1,19 +1,22 @@
+from datetime import datetime
 from pathlib import Path
 
 import hydra
 import torch
 from omegaconf import DictConfig
 from torch.optim import AdamW
-from transformers import AutoTokenizer
+from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
-from mla.config.paths import get_pretrain_paths, TRAINING_MODELS_DIR
+from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
 from mla.models.BERT.bert_model.bert_config import BertConfig
 from mla.models.BERT.bert_model.bert_heads import BertModelForMLM
+from mla.utils.attention_hooks import collect_attention_head_activations
+from mla.utils.attention_utils import compute_model_cka
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.model_utils import MetricEvaluation
-from mla.utils.utils import setup_logging, build_pretrain_results, append_to_results_csv
-
+from mla.utils.utils import append_to_results_csv, calculate_flop_metrics, measure_inference_speed, print_output_table, setup_logging
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pretraining")
 
@@ -31,7 +34,7 @@ def model_pretraining(config: DictConfig) -> None:
     """
     setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
-    paths = get_pretrain_paths(config, root_dir)
+    paths = get_pretrain_paths(root_dir, config)
 
     # Define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
@@ -39,13 +42,13 @@ def model_pretraining(config: DictConfig) -> None:
     # Import the datasets and prepare dataloaders
     dataset = import_and_prepare_data(tokenizer, config, paths)
     train_loader, val_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
-    
+
     # Load the model Configuration
     bert_config = BertConfig.from_pretrained(
         config.model_config_name,
         attention_mechanism=config.attention_mechanism,
         kv_compression_dim=config.kv_compression_dim,
-        q_compression_dim=config.q_compression_dim, 
+        q_compression_dim=config.q_compression_dim,
         output_compression_dim=config.output_compression_dim,
     )
 
@@ -57,9 +60,9 @@ def model_pretraining(config: DictConfig) -> None:
 
     # Initialize pretraining class
     pretrainer = ModelPreTraining(
-       model=compiled_bert_model, 
+       model=compiled_bert_model,
        optimizer=AdamW,
-       metric_fn=MetricEvaluation, 
+       metric_fn=MetricEvaluation,
        config=config,
        paths=paths,
     )
@@ -70,6 +73,43 @@ def model_pretraining(config: DictConfig) -> None:
     # Save results to central CSV
     results = build_pretrain_results(pretrainer, tokenizer, val_loader, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "pretrain_results.csv")
+    print_output_table(title="Pretraining Complete", results=results)
+
+
+def build_pretrain_results(
+    pretrainer: ModelPreTraining,
+    tokenizer: PreTrainedTokenizerBase,
+    val_loader: DataLoader,
+    config: DictConfig
+) -> dict:
+    """
+    Build a results summary dictionary for a pretraining run.
+    """
+    flops, macs, params = calculate_flop_metrics(pretrainer.model, config)
+    ms_per_sample = measure_inference_speed(pretrainer.model, tokenizer, config)
+    activations_list = collect_attention_head_activations(pretrainer, val_loader)
+    avg_cka = compute_model_cka(activations_list)
+    return {
+        "model_name": config.pretrained_model_name,
+        "attention_mechanism": config.attention_mechanism,
+        "dataset": config.dataset_config_name,
+        "n_params": params,
+        "GFLOPS": flops,
+        "GMACS": macs,
+        "Inf (ms)": f"{ms_per_sample:.2f}",
+        "kv": config.kv_compression_dim,
+        "q": config.q_compression_dim,
+        "o": config.output_compression_dim,
+        "pre_training_validation_loss": f"{pretrainer.best_eval_loss:.4f}",
+        "pre_training_top1_mlm_accuracy": f"{pretrainer.best_eval_metrics['accuracy']:.4f}",
+        "pre_training_top5_mlm_accuracy": f"{pretrainer.best_eval_metrics['top5_accuracy']:.4f}",
+        "pre_training_cka": f"{avg_cka:.4f}",
+        "max_steps": config.max_steps,
+        "learning_rate": config.learning_rate,
+        "batch_size": config.batch_size,
+        "timestamp": datetime.now().isoformat(),
+    }
+
 
 if __name__ == "__main__":
     model_pretraining()
