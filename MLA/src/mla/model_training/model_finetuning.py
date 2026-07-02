@@ -1,22 +1,21 @@
-from pathlib import Path
-
-import hydra
 import torch
-from omegaconf import DictConfig
+from torch import nn
 from torch.optim import AdamW
+from transformers import DataCollatorWithPadding, AutoTokenizer
+import hydra
+from omegaconf import DictConfig
+from pathlib import Path
 from torch.utils.data import DataLoader
-from transformers import AutoTokenizer, DataCollatorWithPadding
 
-from mla.config.paths import Paths, get_finetune_paths
-from mla.model_training.model_training import ModelFineTuning, ModelPreTraining
+from mla.utils.model_utils import LossMeter
+from mla.config.paths import get_finetune_paths, Paths
+from mla.model_training.model_training import ModelPreTraining, ModelFineTuning
+from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
 from mla.models.BERT.bert_model.bert_config import BertConfig
-from mla.models.BERT.bert_model.bert_heads import (
-    BERTModelForClassification,
-    BertModelForMLM,
-)
+from mla.utils.utils import set_all_seeds, setup_logging, build_finetune_results
+from mla.utils.model_utils import ClassificationMetricEvaluation
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
-from mla.utils.model_utils import ClassificationMetricEvaluation, LossMeter
-from mla.utils.utils import set_all_seeds, setup_logging
+
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "finetuning")
 
@@ -42,7 +41,7 @@ def prepare_fine_tune_data(config: DictConfig, paths: Paths) -> tuple[DataLoader
     return train_loader, val_loader
 
 
-def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> torch.nn.Module:
+def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> nn.Module:
     """
     Loads a pretrained checkpoint and converts it to a classification model.
 
@@ -51,7 +50,7 @@ def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> torch.nn.Module
         paths (Paths): Paths to the pretrained model checkpoint.
 
     Returns:
-        torch.nn.Module: Compiled classification model ready for fine-tuning.
+        nn.Module: Compiled classification model ready for fine-tuning.
     """
     # Load the Bert Configuration
     bert_config = BertConfig.from_pretrained(
@@ -78,7 +77,7 @@ def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> torch.nn.Module
 
 
 def model_fine_tuning(
-        model: torch.nn.Module,
+        model: nn.Module,
         train_dataloader: DataLoader, 
         eval_dataloader: DataLoader, 
         config: DictConfig, 
@@ -89,7 +88,7 @@ def model_fine_tuning(
     Runs a single fine-tuning experiment for a given seed and returns evaluation results.
 
     Args:
-        model (torch.nn.Module): Compiled classification model to fine-tune.
+        model (nn.Module): Compiled classification model to fine-tune.
         train_dataloader (DataLoader): Training dataloader.
         eval_dataloader (DataLoader): Validation dataloader.
         config (DictConfig): Experiment configuration.
@@ -163,7 +162,9 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
         all_run_results["accuracy"].append(validation_metrics["accuracy"])
         all_run_results["f1"].append(validation_metrics["f1"]) 
 
-    print(all_run_results)
+    # Save results to central CSV
+    results = build_finetune_results(all_run_results, config)
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "finetune_results.csv")
 
 
 if __name__ == "__main__":

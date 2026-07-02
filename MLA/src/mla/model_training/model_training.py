@@ -61,6 +61,9 @@ class BaseModelTraining(ABC):
         self.best_eval_loss = float("inf")
         self._train_step_start_time = None
         self._eval_step_start_time = None
+        self.best_eval_metrics = None
+        self.best_loss_metrics = None
+
     
     def _setup_scheduler(self) -> None:
         """
@@ -277,6 +280,8 @@ class BaseModelTraining(ABC):
                                 # Save the best model
                                 if self._is_best_model(eval_loss, eval_metrics):
                                     self.save_model()
+                                    self.best_eval_metrics = eval_metrics
+                                    self.best_loss_metrics = eval_loss
         self._close_progress_bars()
             
     def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:

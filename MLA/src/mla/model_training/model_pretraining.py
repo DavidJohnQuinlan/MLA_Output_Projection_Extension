@@ -6,13 +6,14 @@ from omegaconf import DictConfig
 from torch.optim import AdamW
 from transformers import AutoTokenizer
 
-from mla.config.paths import get_pretrain_paths
+from mla.config.paths import get_pretrain_paths, TRAINING_MODELS_DIR
 from mla.model_training.model_training import ModelPreTraining
 from mla.models.BERT.bert_model.bert_config import BertConfig
 from mla.models.BERT.bert_model.bert_heads import BertModelForMLM
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.model_utils import MetricEvaluation
-from mla.utils.utils import setup_logging
+from mla.utils.utils import setup_logging, build_pretrain_results, append_to_results_csv
+
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pretraining")
 
@@ -66,8 +67,9 @@ def model_pretraining(config: DictConfig) -> None:
     # Start the engine
     pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
 
-    # TODO: MAKE SOMETHING THAT OUTPUTS AND SAVES RESULTS TO A FILE/SCREEN!
-    
+    # Save results to central CSV
+    results = build_pretrain_results(pretrainer, tokenizer, val_loader, config)
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "pretrain_results.csv")
 
 if __name__ == "__main__":
     model_pretraining()
