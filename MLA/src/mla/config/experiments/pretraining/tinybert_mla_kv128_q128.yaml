@@ -32,7 +32,6 @@ hidden_size: 312
 max_seq_length: 128
 max_position_embeddings: 128
 mixed_precision: "no"
-eval_metric: loss
 
 # Training
 batch_size: 8
@@ -42,3 +41,4 @@ mlm: True
 mlm_probability: 0.15
 train_eval_steps: 1 # 10
 eval_steps: 1 # 500
+eval_metric: loss

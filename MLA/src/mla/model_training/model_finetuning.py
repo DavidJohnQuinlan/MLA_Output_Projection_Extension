@@ -1,27 +1,36 @@
 import torch
-import wandb
 from torch.optim import AdamW
 from transformers import DataCollatorWithPadding, AutoTokenizer
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 from pathlib import Path
 from torch.utils.data import DataLoader
-from torch._dynamo.eval_frame import OptimizedModule
 
+from mla.utils.model_utils import LossMeter
 from mla.config.paths import get_finetune_paths, Paths
 from mla.model_training.model_training import ModelPreTraining, ModelFineTuning
 from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
 from mla.models.BERT.bert_model.bert_config import BertConfig
-from mla.utils.utils import set_all_seeds
+from mla.utils.utils import set_all_seeds, setup_logging
 from mla.utils.model_utils import ClassificationMetricEvaluation
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
+
+
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "finetuning")
 
 
-def prepare_fine_tune_data(config: DictConfig, paths: Paths) -> Tuple[DataLoader, DataLoader]:
+def prepare_fine_tune_data(config: DictConfig, paths: Paths) -> tuple[DataLoader, DataLoader]:
     """
+    Loads and tokenizes the fine-tuning dataset and returns train and validation dataloaders.
+
+    Args:
+        config (DictConfig): Experiment configuration containing dataset and tokenizer settings.
+        paths (Paths): Paths to data directories.
+
+    Returns:
+        tuple[DataLoader, DataLoader]: Training and validation dataloaders.
     """
-    # Define the TinyBert Tokenizer
+    # Define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
 
     # Import the datasets and prepare dataloaders
@@ -29,9 +38,18 @@ def prepare_fine_tune_data(config: DictConfig, paths: Paths) -> Tuple[DataLoader
     train_loader, val_loader = prepare_dataloaders(dataset, tokenizer, config, DataCollatorWithPadding)
 
     return train_loader, val_loader
-    
+
+
 def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> torch.nn.Module:
     """
+    Loads a pretrained checkpoint and converts it to a classification model.
+
+    Args:
+        config (DictConfig): Experiment configuration containing model and attention settings.
+        paths (Paths): Paths to the pretrained model checkpoint.
+
+    Returns:
+        torch.nn.Module: Compiled classification model ready for fine-tuning.
     """
     # Load the Bert Configuration
     bert_config = BertConfig.from_pretrained(
@@ -52,9 +70,10 @@ def prepare_fine_tune_model(config: DictConfig, paths: Paths) -> torch.nn.Module
     # Convert MLM BERT model to classification BERT
     bert_classifier = BERTModelForClassification(bert_model=bert_model, config=config)
 
-    # Compile the BERT classifer
+    # Compile the BERT classifier
     compiled_bert_classifier = torch.compile(bert_classifier)
     return compiled_bert_classifier
+
 
 def model_fine_tuning(
         model: torch.nn.Module,
@@ -63,12 +82,24 @@ def model_fine_tuning(
         config: DictConfig, 
         paths: Paths, 
         seed: int,
-    ) -> torch.nn.Module:
+    ) -> tuple[LossMeter, dict]:
     """
+    Runs a single fine-tuning experiment for a given seed and returns evaluation results.
+
+    Args:
+        model (torch.nn.Module): Compiled classification model to fine-tune.
+        train_dataloader (DataLoader): Training dataloader.
+        eval_dataloader (DataLoader): Validation dataloader.
+        config (DictConfig): Experiment configuration.
+        paths (Paths): Paths to model checkpoints.
+        seed (int): Random seed for reproducibility.
+
+    Returns:
+        tuple[LossMeter, dict]: Validation loss and evaluation metrics.
     """
-    # Prepare the datasets and model
+    # Set the seed
     set_all_seeds(seed)
-    
+
     # Fine tune the model
     fine_tuner = ModelFineTuning(model, AdamW, ClassificationMetricEvaluation, config, paths, seed)
     fine_tuner.fine_tune_model(training_dataloader=train_dataloader, eval_dataloader=eval_dataloader)
@@ -78,10 +109,18 @@ def model_fine_tuning(
 
     return validation_loss, validation_metrics
 
-@hydra.main(version_base=None, config_path=config_path, config_name="bert_mha_sst2")
-def run_model_fine_tuning(config: DictConfig) -> None:
+
+def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, Dict]:
     """
+    Entry point for running a single fine-tuning experiment.
+
+    Prepares the data and model from config, runs fine-tuning with the first
+    seed defined in config, and logs results to W&B.
+
+    Args:
+        config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
+    setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(config, root_dir)
 
@@ -92,24 +131,29 @@ def run_model_fine_tuning(config: DictConfig) -> None:
 
     return validation_loss, validation_metrics
 
-@hydra.main(version_base=None, config_path=config_path, config_name="bert_mha_sst2")
+
+@hydra.main(version_base=None, config_path=config_path, config_name="tinybert_mha_sst2")
 def run_multiple_fine_tunings(config: DictConfig) -> None:
     """
+    Runs fine-tuning across multiple seeds and aggregates results.
+
+    Prepares data once, then rebuilds the model from the pretrained checkpoint
+    for each seed, running an independent fine-tuning experiment each time.
+
+    Args:
+        config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
+    setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(config, root_dir)
-
-    # Prepare the data and model
     train_loader, val_loader = prepare_fine_tune_data(config, paths)
-    bert_model = prepare_fine_tune_model(config, paths)
 
     all_run_results = {"loss": [], "accuracy": [], "f1": []}
 
     for seed in config.seeds:
 
-        # Prepare the datasets and model
-        set_all_seeds(seed)
-        
+        # Initialise the model
+        bert_model = prepare_fine_tune_model(config, paths)
         validation_loss, validation_metrics = model_fine_tuning(bert_model, train_loader, val_loader, config, paths, seed)
 
         # Add results
@@ -117,8 +161,8 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
         all_run_results["accuracy"].append(validation_metrics["accuracy"])
         all_run_results["f1"].append(validation_metrics["f1"]) 
 
-    return all_run_results
+    print(all_run_results)
 
 
 if __name__ == "__main__":
-    run_model_fine_tuning()
+    run_multiple_fine_tunings()

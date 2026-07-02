@@ -1,11 +1,9 @@
 import time
 import torch
-import os
 import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
 from omegaconf import OmegaConf, DictConfig
 from abc import ABC, abstractmethod
-from typing import Tuple
 
 from pathlib import Path
 from torch.optim import Optimizer
@@ -280,7 +278,7 @@ class BaseModelTraining(ABC):
                                     self.save_model()
         self._close_progress_bars()
             
-    def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> Tuple[LossMeter, dict]:
+    def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
         """
         Evaluate the model on some pre-batched dataset.
 

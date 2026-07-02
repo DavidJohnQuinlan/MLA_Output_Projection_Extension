@@ -2,25 +2,48 @@ from pathlib import Path
 from omegaconf import DictConfig
 from dataclasses import dataclass
 
+TRAINING_DATA_DIR = "training_data"
+TRAINING_MODELS_DIR = "training_models"
 
 @dataclass
 class Paths:
+    """Paths to data and model directories for a given experiment."""
     data_path: Path
     tokenized_data_path: Path
     model_file_path: Path
     pretrained_model_path: Path | None = None
 
+
 def get_pretrain_paths(config: DictConfig, root_dir: Path) -> Paths:
+    """
+    Builds and returns paths for a pretraining experiment.
+
+    Args:
+        config (DictConfig): Experiment configuration containing dataset and model name settings.
+        root_dir (Path): Root directory of the project.
+
+    Returns:
+        Paths: Populated paths for pretraining data and model checkpoint.
+    """
     return Paths(
-        data_path = root_dir / "training_data",
-        tokenized_data_path = root_dir / "training_data" / "pretraining" / config.dataset_config_name,
-        model_file_path = root_dir / "training_models" / "pretraining" / f"{config.pretrained_model_name}.th",
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / "pretraining" / config.dataset_config_name,
+        model_file_path = root_dir / TRAINING_MODELS_DIR / "pretraining" / f"{config.pretrained_model_name}.th",
     )
 
+
 def get_finetune_paths(config: DictConfig, root_dir: Path) -> Paths:
+    """
+    Builds and returns paths for a fine-tuning experiment.
+
+    Args:
+        config (DictConfig): Experiment configuration containing dataset and model name settings.
+        root_dir (Path): Root directory of the project.
+
+    Returns:
+        Paths: Populated paths for fine-tuning data, pretrained checkpoint, and fine-tuned model.
+    """
     return Paths(
-        data_path = root_dir / "training_data",
-        tokenized_data_path = root_dir / "training_data" / "finetuning" / config.dataset_config_name,
-        pretrained_model_path = root_dir / "training_models" / "pretraining" / f"{config.pretrained_model_name}.th",
-        model_file_path = root_dir / "training_models" / "finetuning" / f"{config.fine_tuned_model_name}.th",
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / "finetuning" / config.dataset_config_name,
+        pretrained_model_path = root_dir / TRAINING_MODELS_DIR / "pretraining" / f"{config.pretrained_model_name}.th",
+        model_file_path = root_dir / TRAINING_MODELS_DIR / "finetuning" / f"{config.fine_tuned_model_name}.th",
     )

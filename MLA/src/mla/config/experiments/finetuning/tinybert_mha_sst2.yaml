@@ -35,7 +35,6 @@ num_labels: 2
 max_seq_length: 128
 max_position_embeddings: 128
 mixed_precision: "no"
-eval_metric: "f1"
 
 # Training
 batch_size: 32
@@ -43,5 +42,5 @@ eval_batch_size: 872
 gradient_accumulation_steps: 1
 train_eval_steps: 5 # 10
 eval_steps: 5 # 500
-num_fine_tune_runs: 1 # 10
+eval_metric: "f1"
 seeds: [42, 123, 456, 789, 999]

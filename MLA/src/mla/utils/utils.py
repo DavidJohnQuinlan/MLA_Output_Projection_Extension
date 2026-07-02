@@ -5,6 +5,7 @@ import time
 import wandb.integration.torch.wandb_torch as wandb_torch
 import numpy as np
 import os
+import logging
 
 
 def get_device() -> torch.device:
@@ -125,6 +126,13 @@ def safe_hook_variable_gradient_stats(self, var, name, log_track):
     handle = var.register_hook(callback)
     self._hook_handles[name] = handle
     return handle
+
+def setup_logging(level: str = "INFO") -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 # # Create a dummy batch that looks exactly like your training data
 # dummy_ids = torch.ones((hp.batch_size, hp.max_seq_length), dtype=torch.long).to("cpu")

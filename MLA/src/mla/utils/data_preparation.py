@@ -3,7 +3,6 @@ from pathlib import Path
 from datasets import Dataset, load_dataset, load_from_disk
 from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBase
 from collections.abc import Callable
-from typing import Tuple
 from torch.utils.data import DataLoader
 from omegaconf import DictConfig
 from mla.config.paths import Paths
@@ -166,7 +165,7 @@ class CreateDataloaders:
         eval_ds: Dataset, 
         train_collator: Callable, 
         eval_collator: Callable
-    ) -> Tuple[DataLoader, DataLoader]:
+    ) -> tuple[DataLoader, DataLoader]:
         """
         Generates paired training and evaluation DataLoader instances.
 
@@ -186,7 +185,7 @@ class CreateDataloaders:
                 collation function for evaluation samples.
 
         Returns:
-            Tuple[DataLoader, DataLoader]: A two-element tuple containing:
+            tuple[DataLoader, DataLoader]: A two-element tuple containing:
                 - train_loader (DataLoader): The active, shuffled training data stream.
                 - eval_loader (DataLoader): The static, sequential validation data stream 
                   scaled at 4x training batch capacity.
@@ -230,7 +229,8 @@ def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConf
 
     return dataset
 
-def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> Tuple[DataLoader, DataLoader]:
+
+def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> tuple[DataLoader, DataLoader]:
     if config.mode == "pre_training":
 
         # Define a seperate training and evaluation data collator
