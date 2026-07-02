@@ -1,18 +1,18 @@
-import torch
-from transformers import AutoTokenizer
-from torch.optim import AdamW
-import hydra
-from omegaconf import DictConfig
 from pathlib import Path
 
+import hydra
+import torch
+from omegaconf import DictConfig
+from torch.optim import AdamW
+from transformers import AutoTokenizer
+
 from mla.config.paths import get_pretrain_paths
+from mla.model_training.model_training import ModelPreTraining
 from mla.models.BERT.bert_model.bert_config import BertConfig
 from mla.models.BERT.bert_model.bert_heads import BertModelForMLM
-from mla.model_training.model_training import ModelPreTraining
-from mla.utils.utils import count_params, setup_logging
-from mla.utils.model_utils import MetricEvaluation
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
-
+from mla.utils.model_utils import MetricEvaluation
+from mla.utils.utils import setup_logging
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pretraining")
 
@@ -54,9 +54,6 @@ def model_pretraining(config: DictConfig) -> None:
     # Compile the model
     compiled_bert_model = torch.compile(bert_model)
 
-    # Count the number of parameters (trainable) 
-    total, trainable = count_params(compiled_bert_model)
-
     # Initialize pretraining class
     pretrainer = ModelPreTraining(
        model=compiled_bert_model, 
@@ -70,7 +67,7 @@ def model_pretraining(config: DictConfig) -> None:
     pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
 
     # TODO: MAKE SOMETHING THAT OUTPUTS AND SAVES RESULTS TO A FILE/SCREEN!
-    print(total, trainable)
+    
 
 if __name__ == "__main__":
     model_pretraining()

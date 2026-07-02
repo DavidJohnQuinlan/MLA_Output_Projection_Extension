@@ -1,21 +1,22 @@
 import time
-import torch
-import wandb
-import wandb.integration.torch.wandb_torch as wandb_torch
-from omegaconf import OmegaConf, DictConfig
 from abc import ABC, abstractmethod
-
 from pathlib import Path
-from torch.optim import Optimizer
-from torch import nn
+
+import torch
+import wandb.integration.torch.wandb_torch as wandb_torch
 from accelerate import Accelerator
-from transformers import get_cosine_schedule_with_warmup, PretrainedConfig
+from omegaconf import DictConfig, OmegaConf
+from torch import nn
+from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
+import wandb
 from mla.config.paths import Paths
-from mla.utils.model_utils import MetricEvaluationProtocol, LossMeter
-from mla.utils.utils import safe_hook_variable_gradient_stats, setup_wandb, get_device
+from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
+from mla.utils.utils import get_device, safe_hook_variable_gradient_stats, setup_wandb
+
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
 

@@ -1,13 +1,15 @@
-import torch
-from pathlib import Path
-from datasets import Dataset, load_dataset, load_from_disk
-from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBase
 from collections.abc import Callable
-from torch.utils.data import DataLoader
-from omegaconf import DictConfig
-from mla.config.paths import Paths
+from pathlib import Path
+
+import torch
+from datasets import Dataset, load_dataset, load_from_disk
 from datasets.dataset_dict import DatasetDict
+from omegaconf import DictConfig
+from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import DataLoader
+from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBase
+
+from mla.config.paths import Paths
 
 
 def group_texts(examples: Dict, max_length: int) -> Dict:

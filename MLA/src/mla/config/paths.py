@@ -1,6 +1,7 @@
-from pathlib import Path
-from omegaconf import DictConfig
 from dataclasses import dataclass
+from pathlib import Path
+
+from omegaconf import DictConfig
 
 TRAINING_DATA_DIR = "training_data"
 TRAINING_MODELS_DIR = "training_models"

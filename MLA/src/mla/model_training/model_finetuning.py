@@ -1,20 +1,22 @@
-import torch
-from torch.optim import AdamW
-from transformers import DataCollatorWithPadding, AutoTokenizer
-import hydra
-from omegaconf import DictConfig
 from pathlib import Path
+
+import hydra
+import torch
+from omegaconf import DictConfig
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from transformers import AutoTokenizer, DataCollatorWithPadding
 
-from mla.utils.model_utils import LossMeter
-from mla.config.paths import get_finetune_paths, Paths
-from mla.model_training.model_training import ModelPreTraining, ModelFineTuning
-from mla.models.BERT.bert_model.bert_heads import BertModelForMLM, BERTModelForClassification
+from mla.config.paths import Paths, get_finetune_paths
+from mla.model_training.model_training import ModelFineTuning, ModelPreTraining
 from mla.models.BERT.bert_model.bert_config import BertConfig
-from mla.utils.utils import set_all_seeds, setup_logging
-from mla.utils.model_utils import ClassificationMetricEvaluation
+from mla.models.BERT.bert_model.bert_heads import (
+    BERTModelForClassification,
+    BertModelForMLM,
+)
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
-
+from mla.utils.model_utils import ClassificationMetricEvaluation, LossMeter
+from mla.utils.utils import set_all_seeds, setup_logging
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "finetuning")
 

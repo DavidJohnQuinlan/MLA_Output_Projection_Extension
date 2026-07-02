@@ -1,7 +1,10 @@
+import logging
+from typing import Protocol
+
 import numpy as np
 import torch
-from typing import Dict, Protocol
-from sklearn.metrics import recall_score, precision_score, f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score
+logger = logging.getLogger(__name__)
 
 
 class LossMeter:
@@ -46,7 +49,7 @@ class LossMeter:
             self.count += n
             self.avg = self.sum / self.count
         else:
-            print("Warning: NaN detected in LossMeter, skipping update.")
+            logger.warning("NaN detected in LossMeter, skipping update.")
 
     def __str__(self) -> str:
         """
@@ -105,8 +108,8 @@ class MetricEvaluation:
                 Shape can be 3D `(batch_size, seq_len, vocab_size)` or pre-flattened 2D `(total_tokens, vocab_size)`.
             labels (torch.Tensor): Ground-truth target token matrix matching the spatial structure 
                 of logits. Elements to bypass must be set to `-100`. Shape: `(batch_size, seq_len)` or `(total_tokens,)`.
-            mode (bool, optional): Determines whether to calculate and store multi-rank 
-                top-5 matching indexes alongside basic top-1 accuracy. Defaults to `False`.
+            mode (str, optional): Determines whether to calculate and store multi-rank 
+                top-5 matching indexes alongside basic top-1 accuracy.
         """
         # Filter out the -100 ignore indices
         mask = labels != -100
@@ -129,12 +132,12 @@ class MetricEvaluation:
             is_correct_t5 = t5_indices.eq(target.unsqueeze(1)).any(dim=1)
             self.correct_t5 += is_correct_t5.sum().item()
 
-    def compute(self) -> Dict[str, float]:
+    def compute(self) -> dict[str, float]:
         """
         Calculates final aggregated dataset accuracies based on collected counts.
 
         Returns:
-            Dict[str, float]: A dictionary summarizing active scores. Possible keys include:
+            dict[str, float]: A dictionary summarizing active scores. Possible keys include:
                 - `"accuracy"`: The global percentage score for Top-1 matching.
                 - `"top5_accuracy"`: The global percentage score for Top-5 matching (omitted if 
                   `include_top5` was never enabled).
@@ -150,7 +153,20 @@ class MetricEvaluation:
             
         return results
 
+
 class ClassificationMetricEvaluation:
+    """
+    Computes and aggregates classification metrics for sequence classification tasks.
+
+    Tracks predictions and ground-truth labels across batches, computing accuracy,
+    precision, recall, and F1 score upon request.
+
+    Attributes:
+        correct (int): Cumulative count of correctly classified samples.
+        total (int): Total number of samples evaluated.
+        all_preds (list): Accumulated predicted class indices across all batches.
+        all_labels (list): Accumulated ground-truth labels across all batches.
+    """
     def __init__(self):
         self.reset()
 
@@ -182,7 +198,7 @@ class ClassificationMetricEvaluation:
     def compute(self):
         """Calculates and returns the final metrics."""
         if self.total == 0:
-            return {"accuracy": 0.0}
+            return {"count": 0, "accuracy": 0.0, "recall": 0.0, "precision": 0.0, "f1": 0.0}
         
         accuracy = self.correct / self.total
         recall = recall_score(self.all_labels, self.all_preds, zero_division=0)

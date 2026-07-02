@@ -1,12 +1,14 @@
-import torch
 import math
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+import torch
+from torch import nn
 
 
 class AttentionHeadHook:
-    def __init__(self, model):
+    def __init__(self, model: nn.Module):
         if hasattr(model, "_orig_mod"):
             self.model = model._orig_mod
         else:
@@ -19,7 +21,7 @@ class AttentionHeadHook:
         self.hidden_size = self.model.config.hidden_size
         self.head_dim = self.hidden_size // self.n_heads
 
-    def hook_fn(self, layer_idx):
+    def hook_fn(self, layer_idx: int):
         def hook(module, inputs, outputs):
             context_layer = outputs[0]
             batch_size, seq_len, _ = context_layer.shape
@@ -36,14 +38,14 @@ class AttentionHeadHook:
 
         return hook
 
-    def register(self):
+    def register(self) -> None:
         for i, layer in enumerate(self.model.bert.encoder.layer):
             handle = layer.attention.self.register_forward_hook(
                 self.hook_fn(i)
             )
             self.handles.append(handle)
 
-    def remove(self):
+    def remove(self) -> None:
         for handle in self.handles:
             handle.remove()
 
