@@ -11,7 +11,7 @@ from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBas
 from mla.config.paths import Paths
 
 
-def group_texts(examples: dict, max_length: int) -> dict:
+def group_texts(examples: dict, max_seq_length: int) -> dict:
     """
     Groups and packs tokenized sequences into uniform chunks of a fixed maximum length.
 
@@ -25,12 +25,12 @@ def group_texts(examples: dict, max_length: int) -> dict:
         examples (dict[str, list[list[Any]]]): A batch of tokenized data samples. Typical keys
             include `"input_ids"`, `"attention_mask"`, and `"token_type_ids"`, where each value
             is a list of token-integer arrays (one array per sequence).
-        max_length (int): The target block size or context window length for the model
+        max_seq_length (int): The target block size or context window length for the model
             (e.g., `512` or `2048`).
 
     Returns:
         dict[str, List[List[Any]]]: A packed dictionary containing uniform, block-aligned sequences
-            of exact length `max_length`, along with an added `"labels"` key for training.
+            of exact length `max_seq_length`, along with an added `"labels"` key for training.
     """
 
     # Concatenate each list of items together (IDs, tokens)
@@ -40,12 +40,12 @@ def group_texts(examples: dict, max_length: int) -> dict:
     total_length = len(concatenated_examples[list(examples.keys())[0]])
 
     # We drop the small remainder at the very end
-    if total_length >= max_length:
-        total_length = (total_length // max_length) * max_length
+    if total_length >= max_seq_length:
+        total_length = (total_length // max_seq_length) * max_seq_length
 
     # Split by chunks of block_size
     result = {
-        k: [t[i : i + max_length] for i in range(0, total_length, max_length)]
+        k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
         for k, t in concatenated_examples.items()
     }
 
@@ -60,9 +60,9 @@ def get_processed_dataset(
     dataset_config_name: str | None,
     tokenizer: PreTrainedTokenizerBase,
     num_proc: int,
-    text_column: str,
-    max_length: int | None = 128,
-    mode: str = "training",
+    sentence_keys: list[str],
+    max_seq_length: int | None = 128,
+    task_type: str = "pre_training",
 ) -> DatasetDict | Dataset:
     """
     Loads, tokenizes, packs, and caches a text dataset using a local disk fallback.
@@ -82,9 +82,9 @@ def get_processed_dataset(
             (e.g., `"wikitext-2-raw-v1"`). Pass `None` if the dataset does not use sub-configurations.
         tokenizer (PreTrainedTokenizer): The companion tokenizer instance used to encode the raw string data.
         num_proc (int): The number of CPU worker processes to spin up for parallel map execution.
-        text_column (str): Either "text" or "sentence" depending if preparing training or fine-tuning dataset.
-        max_length (int, optional): The uniform target context window block length. Defaults to `128`.
-        mode (str): Either "training" or "fine-tuning".
+        sentence_keys (list[str]): The text columns that need to be tokenized.
+        max_seq_length (int, optional): The uniform target context window block length. Defaults to `128`.
+        task_type (str): Either "training" or "fine-tuning".
 
     Returns:
         Union[DatasetDict, Dataset]: A processed Hugging Face dataset or split dictionary ready
@@ -101,28 +101,29 @@ def get_processed_dataset(
     raw_datasets = load_dataset(dataset_name, dataset_config_name)
 
     # Remove any empty texts
-    clean_datasets = raw_datasets.filter(lambda x: x[text_column].strip() != "")
+    clean_datasets = raw_datasets.filter(lambda x: all(x[k].strip() != "" for k in sentence_keys))
 
     # Tokenize the dataset
+    is_fine_tuning = task_type == "fine_tuning"
     dataset = clean_datasets.map(
         lambda x: tokenizer(
-            x[text_column],
-            truncation=False
+            *[x[k] for k in sentence_keys],
+            truncation=is_fine_tuning,
+            max_length=max_seq_length if is_fine_tuning else None,
         ),
         batched=True,
-        remove_columns=[text_column],
+        remove_columns=sentence_keys,
     )
 
-    if mode == "training":
+    if task_type == "pre_training":
 
         # Group the datasets
         dataset = dataset.map(
-            lambda x: group_texts(x, max_length=max_length),
+            lambda x: group_texts(x, max_seq_length=max_seq_length),
             batched=True,
             num_proc=num_proc
         )
-    elif mode == "fine-tuning":
-
+    elif task_type == "fine_tuning":
         # Rename 'label' to 'labels' and remove idx
         dataset = dataset.rename_column("label", "labels").remove_columns(["idx"])
 
@@ -223,16 +224,16 @@ def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConf
         config.dataset_config_name,
         tokenizer,
         num_proc=config.parallel_processes,
-        text_column=config.text_column,
-        max_length=config.max_seq_length,
-        mode=config.mode,
+        sentence_keys=config.sentence_keys,
+        max_seq_length=config.max_seq_length,
+        task_type=config.task_type,
     )
 
     return dataset
 
 
 def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> tuple[DataLoader, DataLoader]:
-    if config.mode == "pre_training":
+    if config.task_type == "pre_training":
 
         # Define a seperate training and evaluation data collator
         train_collator = DataCollatorForLanguageModeling(
@@ -248,13 +249,14 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
             mlm_probability=config.mlm_probability
         )
 
-    elif config.mode == "fine_tuning":
+    elif config.task_type == "fine_tuning":
         train_collator = eval_collator = collator_fn(tokenizer=tokenizer)
 
     # Prepare the dataloaders
+    val_split = "validation" if "validation" in dataset else "validation_matched"
     train_loader, val_loader = CreateDataloaders(config).create_dataloaders(
         dataset["train"].select(range(100)),
-        dataset["validation"].select(range(100)),
+        dataset[val_split].select(range(100)),
         train_collator,
         eval_collator,
     )

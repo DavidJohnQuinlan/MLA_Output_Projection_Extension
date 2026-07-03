@@ -1,19 +1,19 @@
 # General
-experiment_name: TinyBERT_MHA_Baseline
-attention_mechanism: MHA
+experiment_name: TinyBERT_MLAE_kv128_q128_o128
+attention_mechanism: MLAE
 job_type: pre_training
 experiment_project: MLA_TinyBERT_128
 model_config_name: huawei-noah/TinyBERT_General_4L_312D
-kv_compression_dim: null
-q_compression_dim: null
-output_compression_dim: null
+kv_compression_dim: 128
+q_compression_dim: 128
+output_compression_dim: 128
 
 # Dataset
 dataset_name: wikitext
 dataset_config_name: wikitext-103-raw-v1
 drop_last: True
-text_column: text
-mode: pre_training
+sentence_keys: ["text"]
+task_type: pre_training
 parallel_processes: 8
 num_workers: 0
 pin_memory: False
@@ -27,7 +27,7 @@ learning_rate: 5e-4
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_Baseline_MHA
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLAE_kv128_q128_o128
 hidden_size: 312
 max_seq_length: 128
 max_position_embeddings: 128

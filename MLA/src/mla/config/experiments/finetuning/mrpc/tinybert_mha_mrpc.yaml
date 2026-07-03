@@ -1,5 +1,5 @@
-# General
-experiment_name: TinyBERT_MHA_SST2
+# @package _global_
+experiment_name: TinyBERT_MHA_MRPC
 attention_mechanism: MHA
 job_type: fine_tuning
 experiment_project: MLA_TinyBERT_128
@@ -10,25 +10,25 @@ output_compression_dim: null
 
 # Dataset
 dataset_name: glue
-dataset_config_name: sst2
+dataset_config_name: mrpc
 drop_last: True
-text_column: sentence
-mode: fine_tuning
+sentence_keys: ["sentence1", "sentence2"]
+task_type: fine_tuning
 parallel_processes: 8
 num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 10 # 2104*5
+max_steps: 10 # 1200
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0
-learning_rate: 2e-5
+learning_rate: 3e-5
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_Baseline_MHA
-fine_tuned_model_name: fine_tuning_sst2__TinyBERT_Baseline_MHA
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MHA
+fine_tuned_model_name: fine_tuning_mrpc__TinyBERT_MHA
 dropout_rate: 0.1
 hidden_size: 312
 num_labels: 2
@@ -38,7 +38,7 @@ mixed_precision: "no"
 
 # Training
 batch_size: 32
-eval_batch_size: 872
+eval_batch_size: 408
 gradient_accumulation_steps: 1
 train_eval_steps: 5 # 10
 eval_steps: 5 # 500

@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 import hydra
 import numpy as np
@@ -136,7 +137,7 @@ def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
     return validation_loss, validation_metrics
 
 
-@hydra.main(version_base=None, config_path=config_path, config_name="tinybert_mha_sst2")
+@hydra.main(version_base=None, config_path=config_path, config_name="sst2/tinybert_mha_sst2")
 def run_multiple_fine_tunings(config: DictConfig) -> None:
     """
     Runs fine-tuning across multiple seeds and aggregates results.
@@ -167,11 +168,11 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
 
     # Save results to central CSV
     results = build_finetune_results(all_run_results, config)
-    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "finetune_results.csv")
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "finetuning" / "finetune_results.csv")
     print_output_table(title="Fine tuning Complete", results=results)
 
 
-def build_finetune_results(results: list, config: DictConfig):
+def build_finetune_results(results: dict, config: DictConfig):
     """
     Build a results summary dictionary across multiple finetuning runs.
     """
@@ -185,6 +186,10 @@ def build_finetune_results(results: list, config: DictConfig):
         "avg_finetune_validation_loss": f"{np.mean(results["loss"]):.4f} +/- {np.std(results["loss"]):.4f}",
         "avg_finetune_accuracy_loss": f"{np.mean(results["accuracy"]):.4f} +/- {np.std(results["accuracy"]):.4f}",
         "avg_finetune_f1_loss": f"{np.mean(results["f1"]):.4f} +/- {np.std(results["f1"]):.4f}",
+        "max_steps": config.max_steps,
+        "learning_rate": config.learning_rate,
+        "batch_size": config.batch_size,
+        "timestamp": datetime.now().isoformat(),
     }
 
 

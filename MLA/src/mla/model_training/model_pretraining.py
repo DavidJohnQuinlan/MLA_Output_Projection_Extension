@@ -7,6 +7,7 @@ from omegaconf import DictConfig
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
+from torch import nn
 
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
@@ -21,7 +22,7 @@ from mla.utils.utils import append_to_results_csv, calculate_flop_metrics, measu
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pretraining")
 
 
-@hydra.main(version_base=None, config_path=config_path, config_name="tinybert_mha_baseline")
+@hydra.main(version_base=None, config_path=config_path, config_name="tinybert_mha")
 def model_pretraining(config: DictConfig) -> None:
     """
     Entry point for pre-training a BERT-based model using Masked Language Modeling.
@@ -71,13 +72,14 @@ def model_pretraining(config: DictConfig) -> None:
     pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
 
     # Save results to central CSV
-    results = build_pretrain_results(pretrainer, tokenizer, val_loader, config)
-    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "pretrain_results.csv")
+    results = build_pretrain_results(pretrainer, bert_model, tokenizer, val_loader, config)
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
 
 
 def build_pretrain_results(
     pretrainer: ModelPreTraining,
+    model: nn.Module,
     tokenizer: PreTrainedTokenizerBase,
     val_loader: DataLoader,
     config: DictConfig
@@ -85,7 +87,7 @@ def build_pretrain_results(
     """
     Build a results summary dictionary for a pretraining run.
     """
-    flops, macs, params = calculate_flop_metrics(pretrainer.model, config)
+    flops, macs, params = calculate_flop_metrics(model, config)
     ms_per_sample = measure_inference_speed(pretrainer.model, tokenizer, config)
     activations_list = collect_attention_head_activations(pretrainer, val_loader)
     avg_cka = compute_model_cka(activations_list)

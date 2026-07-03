@@ -22,8 +22,8 @@ class PreTrainingConfig:
     dataset_name: str = MISSING
     dataset_config_name: str = MISSING
     drop_last: bool = MISSING
-    text_column: str = MISSING
-    mode: str = MISSING
+    sentence_keys: list = MISSING
+    task_type: str = MISSING
     parallel_processes: int = MISSING
     num_workers: int = MISSING
     pin_memory: bool = MISSING
@@ -72,8 +72,8 @@ class FineTuningConfig:
     dataset_name: str = MISSING
     dataset_config_name: str = MISSING
     drop_last: bool = MISSING
-    text_column: str = MISSING
-    mode: str = MISSING
+    sentence_keys: list = MISSING
+    task_type: str = MISSING
     parallel_processes: int = MISSING
     num_workers: int = MISSING
     pin_memory: bool = MISSING

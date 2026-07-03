@@ -1,34 +1,34 @@
-# General
-experiment_name: TinyBERT_MLA_SST2_kv128_q128
-attention_mechanism: MLA
+# @package _global_
+experiment_name: TinyBERT_MLAE_MRPC_kv128_q128_o128
+attention_mechanism: MLAE
 job_type: fine_tuning
 experiment_project: MLA_TinyBERT_128
 model_config_name: huawei-noah/TinyBERT_General_4L_312D
 kv_compression_dim: 128
 q_compression_dim: 128
-output_compression_dim: null
+output_compression_dim: 128
 
 # Dataset
 dataset_name: glue
-dataset_config_name: sst2
+dataset_config_name: mrpc
 drop_last: True
-text_column: sentence
-mode: fine_tuning
+sentence_keys: ["sentence1", "sentence2"]
+task_type: fine_tuning
 parallel_processes: 8
 num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 10 # 2104*5
+max_steps: 10 # 1200
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0
-learning_rate: 2e-5
+learning_rate: 3e-5
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLA_kv128_q128
-fine_tuned_model_name: fine_tuning_sst2__TinyBERT_Baseline_MLA__kv128_q128
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLAE_kv128_q128_o128
+fine_tuned_model_name: fine_tuning_mrpc__TinyBERT_MLAE__kv128_q128_o128
 dropout_rate: 0.1
 hidden_size: 312
 num_labels: 2
@@ -38,7 +38,7 @@ mixed_precision: "no"
 
 # Training
 batch_size: 32
-eval_batch_size: 872
+eval_batch_size: 408
 gradient_accumulation_steps: 1
 train_eval_steps: 5 # 10
 eval_steps: 5 # 500

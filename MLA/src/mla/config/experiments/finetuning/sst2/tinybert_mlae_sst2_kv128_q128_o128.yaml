@@ -1,4 +1,4 @@
-# General
+# @package _global_
 experiment_name: TinyBERT_MLAE_SST2_kv128_q128_o128
 attention_mechanism: MLAE
 job_type: fine_tuning
@@ -12,8 +12,8 @@ output_compression_dim: 128
 dataset_name: glue
 dataset_config_name: sst2
 drop_last: True
-text_column: sentence
-mode: fine_tuning
+sentence_keys: ["sentence"]
+task_type: fine_tuning
 parallel_processes: 8
 num_workers: 0
 pin_memory: False
@@ -28,7 +28,7 @@ weight_decay: 0.01
 
 # Model
 pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLAE_kv128_q128_o128
-fine_tuned_model_name: fine_tuning_sst2__TinyBERT_Baseline_MLAE__kv128_q128_o128
+fine_tuned_model_name: fine_tuning_sst2__TinyBERT_MLAE__kv128_q128_o128
 dropout_rate: 0.1
 hidden_size: 312
 num_labels: 2
@@ -42,5 +42,5 @@ eval_batch_size: 872
 gradient_accumulation_steps: 1
 train_eval_steps: 5 # 10
 eval_steps: 5 # 500
-eval_metric: "f1"
+eval_metric: "accuracy"
 seeds: [42, 123, 456, 789, 999]
