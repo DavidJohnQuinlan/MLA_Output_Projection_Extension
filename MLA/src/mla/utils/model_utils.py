@@ -3,7 +3,7 @@ from typing import Protocol
 
 import numpy as np
 import torch
-from sklearn.metrics import f1_score, precision_score, recall_score, matthews_corrcoef
+from sklearn.metrics import f1_score, matthews_corrcoef, precision_score, recall_score
 
 logger = logging.getLogger(__name__)
 
@@ -207,12 +207,12 @@ class ClassificationMetricEvaluation:
         precision = precision_score(self.all_labels, self.all_preds, average=average, zero_division=0)
         f1 = f1_score(self.all_labels, self.all_preds, average=average, zero_division=0)
         mcc = matthews_corrcoef(self.all_labels, self.all_preds)
-        
+
         return {
             "count": self.total,
             "accuracy": accuracy,
             "recall": recall,
             "precision": precision,
             "f1": f1,
-            "mcc": mcc, 
+            "mcc": mcc,
         }

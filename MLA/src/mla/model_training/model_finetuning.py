@@ -1,5 +1,5 @@
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 import hydra
 import numpy as np
@@ -168,7 +168,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
 
     # Save results to central CSV
     results = build_finetune_results(all_run_results, config)
-    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "finetuning" / "finetune_results.csv")
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / "finetune_results.csv")
     print_output_table(title="Fine tuning Complete", results=results)
 
 
@@ -177,6 +177,7 @@ def build_finetune_results(results: dict, config: DictConfig):
     Build a results summary dictionary across multiple finetuning runs.
     """
     return {
+        "timestamp": datetime.now().isoformat(),
         "model_name": config.pretrained_model_name,
         "attention_mechanism": config.attention_mechanism,
         "dataset": config.dataset_config_name,
@@ -189,7 +190,6 @@ def build_finetune_results(results: dict, config: DictConfig):
         "max_steps": config.max_steps,
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,
-        "timestamp": datetime.now().isoformat(),
     }
 
 

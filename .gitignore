@@ -1,6 +1,5 @@
 wandb
 data
-models/
 notebooks/
 outputs
 training_data/ 

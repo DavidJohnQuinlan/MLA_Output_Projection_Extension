@@ -2,7 +2,7 @@
 experiment_name: TinyBERT_MLA_MNLI_kv128_q128
 attention_mechanism: MLA
 job_type: fine_tuning
-experiment_project: MLA_TinyBERT_128
+experiment_project: TinyBERT
 model_config_name: huawei-noah/TinyBERT_General_4L_312D
 kv_compression_dim: 128
 q_compression_dim: 128

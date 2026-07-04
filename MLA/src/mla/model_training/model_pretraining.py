@@ -4,10 +4,10 @@ from pathlib import Path
 import hydra
 import torch
 from omegaconf import DictConfig
+from torch import nn
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
-from torch import nn
 
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
@@ -73,7 +73,7 @@ def model_pretraining(config: DictConfig) -> None:
 
     # Save results to central CSV
     results = build_pretrain_results(pretrainer, bert_model, tokenizer, val_loader, config)
-    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / "pretraining" / "pretrain_results.csv")
+    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
 
 
@@ -92,6 +92,7 @@ def build_pretrain_results(
     activations_list = collect_attention_head_activations(pretrainer, val_loader)
     avg_cka = compute_model_cka(activations_list)
     return {
+        "timestamp": datetime.now().isoformat(),
         "model_name": config.pretrained_model_name,
         "attention_mechanism": config.attention_mechanism,
         "dataset": config.dataset_config_name,
@@ -109,7 +110,6 @@ def build_pretrain_results(
         "max_steps": config.max_steps,
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,
-        "timestamp": datetime.now().isoformat(),
     }
 
 

@@ -2,7 +2,7 @@
 experiment_name: TinyBERT_MHA_CoLA
 attention_mechanism: MHA
 job_type: fine_tuning
-experiment_project: MLA_TinyBERT_128
+experiment_project: TinyBERT
 model_config_name: huawei-noah/TinyBERT_General_4L_312D
 kv_compression_dim: null
 q_compression_dim: null
