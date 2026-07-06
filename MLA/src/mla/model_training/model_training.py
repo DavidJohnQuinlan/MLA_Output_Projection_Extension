@@ -15,7 +15,7 @@ from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 import wandb
 from mla.config.paths import Paths
 from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
-from mla.utils.utils import get_device, safe_hook_variable_gradient_stats, setup_wandb
+from mla.utils.utils import compute_compression_ratio, get_device, safe_hook_variable_gradient_stats, setup_wandb
 
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
@@ -174,6 +174,7 @@ class BaseModelTraining(ABC):
         """
         if eval_loss.avg < self.best_eval_loss:
             self.best_eval_loss = eval_loss.avg
+            wandb.run.summary["best_eval_loss"] = eval_loss.avg
             return True
         return False
 
@@ -394,8 +395,10 @@ class ModelPreTraining(BaseModelTraining):
             name=self.config.pretrained_model_name,
             job_type=self.config.job_type,
             config=OmegaConf.to_container(self.config, resolve=True),
+            tags=[config.attention_mechanism],
             mode=self.wandb_mode,
         )
+        wandb.config.update({"kv_ratio": compute_compression_ratio(self.config)})
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.history = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
 
@@ -477,8 +480,13 @@ class ModelFineTuning(BaseModelTraining):
             name=f"{self.config.fine_tuned_model_name}__seed_{seed}",
             job_type=self.config.job_type,
             config=OmegaConf.to_container(self.config, resolve=True),
+            tags=[config.attention_mechanism, config.dataset_config_name],
             mode=self.wandb_mode,
         )
+        wandb.config.update({"kv_ratio": compute_compression_ratio(self.config)})
+        wandb.define_metric("eval/accuracy", summary="max")
+        wandb.define_metric("eval/loss", summary="min")
+        wandb.define_metric("eval/f1", summary="max")
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.best_metric = 0.0
         self.history = {
@@ -552,6 +560,8 @@ class ModelFineTuning(BaseModelTraining):
         eval_metric = self.config.eval_metric
         if eval_metrics[eval_metric] > self.best_metric:
             self.best_metric = eval_metrics[eval_metric]
+            wandb.run.summary[f"best_{self.config.eval_metric}"] = eval_metrics[self.config.eval_metric]
+            wandb.run.summary["best_eval_loss"] = eval_loss.avg
             return True
         return False
 

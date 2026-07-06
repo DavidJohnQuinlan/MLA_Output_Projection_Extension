@@ -105,6 +105,15 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
 
+def compute_compression_ratio(config: DictConfig) -> float:
+    """
+    Returns the KV compression ratio relative to hidden size. 1.0 for MHA (no compression).
+    """
+    if config.kv_compression_dim is None:
+        return 1.0
+    return config.kv_compression_dim / config.hidden_size
+
+
 def calculate_flop_metrics(model: nn.Module, config: DictConfig) -> tuple[float, float, float]:
     """
     Calculate the number of FLOPs, MACs and trainable parameters.
