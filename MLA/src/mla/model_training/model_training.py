@@ -362,6 +362,7 @@ class BaseModelTraining(ABC):
         device = get_device()
         model = model_class(model_config)
         state_dict = torch.load(checkpoint_path, weights_only=True, map_location=device)
+        state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
         model.load_state_dict(state_dict)
         return model.to(device)
 
@@ -389,16 +390,17 @@ class ModelPreTraining(BaseModelTraining):
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
         self.wandb_mode = setup_wandb()
+        wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
+        wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
             name=self.config.pretrained_model_name,
             job_type=self.config.job_type,
-            config=OmegaConf.to_container(self.config, resolve=True),
+            config=wandb_cfg,
             tags=[config.attention_mechanism],
             mode=self.wandb_mode,
         )
-        wandb.config.update({"kv_ratio": compute_compression_ratio(self.config)})
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.history = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
 
@@ -474,16 +476,17 @@ class ModelFineTuning(BaseModelTraining):
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
         self.wandb_mode = setup_wandb()
+        wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
+        wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
             name=f"{self.config.fine_tuned_model_name}__seed_{seed}",
             job_type=self.config.job_type,
-            config=OmegaConf.to_container(self.config, resolve=True),
+            config=wandb_cfg,
             tags=[config.attention_mechanism, config.dataset_config_name],
             mode=self.wandb_mode,
         )
-        wandb.config.update({"kv_ratio": compute_compression_ratio(self.config)})
         wandb.define_metric("eval/accuracy", summary="max")
         wandb.define_metric("eval/loss", summary="min")
         wandb.define_metric("eval/f1", summary="max")

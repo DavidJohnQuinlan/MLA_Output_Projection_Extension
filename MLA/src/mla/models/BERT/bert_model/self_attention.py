@@ -575,11 +575,13 @@ class BertAttention(nn.Module):
 
         self.attention_mechanism = {
             "MHA": BertSdpaSelfAttention,
+            "MHAE": BertSdpaSelfAttention,
             "MLA": MultiHeadedLatentAttention,
             "MLAE": MultiHeadedLatentAttention,
         }
         self.attention_mechanism_output = {
             "MHA": BertSelfOutput,
+            "MHAE": MultiHeadedLatentAttentionBertSelfOutput,
             "MLA": BertSelfOutput,
             "MLAE": MultiHeadedLatentAttentionBertSelfOutput,
         }
