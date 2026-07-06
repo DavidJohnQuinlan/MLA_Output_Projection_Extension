@@ -36,6 +36,11 @@ ignore = ["E701"]
 [tool.ruff.format]
 quote-style = "double"
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.20",
+]
+
 [project.scripts]
 pretrain = "mla.model_training.model_pretraining:model_pretraining"
 finetune = "mla.model_training.model_finetuning:run_multiple_fine_tunings"

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -19,7 +20,9 @@ from mla.models.BERT.bert_model.bert_heads import (
 )
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.model_utils import ClassificationMetricEvaluation, LossMeter
-from mla.utils.utils import append_to_results_csv, print_output_table, set_all_seeds, setup_logging
+from mla.utils.utils import append_to_results_csv, print_output_table, set_all_seeds
+
+logger = logging.getLogger(__name__)
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "finetuning")
 
@@ -125,14 +128,16 @@ def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(root_dir, config)
 
     # Prepare the data and model
     train_loader, val_loader = prepare_fine_tune_data(config, paths)
+    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(val_loader))
     bert_model = prepare_fine_tune_model(config, paths)
+    logger.info("Loading checkpoint: %s", paths.pretrained_model_path)
     validation_loss, validation_metrics = model_fine_tuning(bert_model, train_loader, val_loader, config, paths, config.seeds[0])
+    logger.info("Seed %d — loss=%.4f  %s=%.4f", config.seeds[0], validation_loss.avg, config.eval_metric, validation_metrics[config.eval_metric])
 
     return validation_loss, validation_metrics
 
@@ -148,18 +153,19 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(root_dir, config)
     train_loader, val_loader = prepare_fine_tune_data(config, paths)
+    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(val_loader))
 
     all_run_results = {"loss": [], "accuracy": [], "f1": []}
 
     for seed in config.seeds:
-
-        # Initialise the model
+        logger.info("Starting fine-tuning seed=%d", seed)
         bert_model = prepare_fine_tune_model(config, paths)
+        logger.info("Loading checkpoint: %s", paths.pretrained_model_path)
         validation_loss, validation_metrics = model_fine_tuning(bert_model, train_loader, val_loader, config, paths, seed)
+        logger.info("Seed %d — loss=%.4f  %s=%.4f", seed, validation_loss.avg, config.eval_metric, validation_metrics[config.eval_metric])
 
         # Add results
         all_run_results["loss"].append(validation_loss.avg)
@@ -170,6 +176,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     results = build_finetune_results(all_run_results, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / "finetune_results.csv")
     print_output_table(title="Fine tuning Complete", results=results)
+    logger.info("All seeds complete for %s", config.experiment_name)
 
 
 def build_finetune_results(results: dict, config: DictConfig):

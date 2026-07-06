@@ -1,6 +1,5 @@
 import csv
 import functools
-import logging
 import os
 import random
 import time
@@ -92,17 +91,6 @@ def safe_hook_variable_gradient_stats(self, var, name, log_track):
     handle = var.register_hook(callback)
     self._hook_handles[name] = handle
     return handle
-
-
-def setup_logging(level: str = "INFO") -> None:
-    """
-    Define the base logging formatting.
-    """
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
 
 def compute_compression_ratio(config: DictConfig) -> float:

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +18,10 @@ from mla.utils.attention_hooks import collect_attention_head_activations
 from mla.utils.attention_utils import compute_model_cka
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.model_utils import MetricEvaluation
-from mla.utils.utils import append_to_results_csv, calculate_flop_metrics, measure_inference_speed, print_output_table, setup_logging
+from mla.utils.utils import append_to_results_csv, calculate_flop_metrics, measure_inference_speed, print_output_table
+
+logger = logging.getLogger(__name__)
+
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pretraining")
 
@@ -33,7 +37,6 @@ def model_pretraining(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    setup_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_pretrain_paths(root_dir, config)
 
@@ -43,8 +46,10 @@ def model_pretraining(config: DictConfig) -> None:
     # Import the datasets and prepare dataloaders
     dataset = import_and_prepare_data(tokenizer, config, paths)
     train_loader, val_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
+    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(val_loader))
 
     # Load the model Configuration
+    logger.info("Loading checkpoint config: %s", config.model_config_name)
     bert_config = BertConfig.from_pretrained(
         config.model_config_name,
         attention_mechanism=config.attention_mechanism,
@@ -69,12 +74,15 @@ def model_pretraining(config: DictConfig) -> None:
     )
 
     # Start the engine
+    logger.info("Starting pretraining — attention=%s  lr=%s  max_steps=%d",
+                config.attention_mechanism, config.learning_rate, config.max_steps)
     pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
 
     # Save results to central CSV
     results = build_pretrain_results(pretrainer, bert_model, tokenizer, val_loader, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
+    logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_eval_loss)
 
 
 def build_pretrain_results(
