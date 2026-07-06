@@ -19,7 +19,7 @@ num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 16365 # 3273 * 5
+max_steps: 9819 # 3273 * 3
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0
