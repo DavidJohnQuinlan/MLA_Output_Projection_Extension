@@ -4,6 +4,7 @@ import os
 import random
 import time
 from pathlib import Path
+import logging
 
 import numpy as np
 import torch
@@ -91,6 +92,13 @@ def safe_hook_variable_gradient_stats(self, var, name, log_track):
     handle = var.register_hook(callback)
     self._hook_handles[name] = handle
     return handle
+
+
+def suppress_console_logging() -> None:
+    root = logging.getLogger()
+    for handler in root.handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+            handler.setLevel(logging.WARNING)
 
 
 def compute_compression_ratio(config: DictConfig) -> float:
