@@ -273,7 +273,7 @@ class BaseModelTraining(ABC):
                             if self.accelerator.is_main_process:
 
                                 # Evaluate the current model on the evaluation dataset
-                                eval_loss, eval_metrics = self.eval_model(eval_dataloader=eval_dataloader, training_eval=False)
+                                eval_loss, eval_metrics = self.eval_model(eval_dataloader=eval_dataloader, training_eval=True)
                                 self.model.train()
                                 self.metric_fn.reset()
 

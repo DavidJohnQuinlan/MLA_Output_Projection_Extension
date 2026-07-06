@@ -19,7 +19,7 @@ num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 10 # 25000
+max_steps: 25000
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0
@@ -36,9 +36,9 @@ mixed_precision: "no"
 # Training
 batch_size: 8
 eval_batch_size: 64
-gradient_accumulation_steps: 1 # 32
+gradient_accumulation_steps: 32
 mlm: True
 mlm_probability: 0.15
-train_eval_steps: 1 # 10
-eval_steps: 1 # 500
+train_eval_steps: 10
+eval_steps: 500
 eval_metric: loss

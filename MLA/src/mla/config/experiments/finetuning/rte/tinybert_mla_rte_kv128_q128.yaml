@@ -19,7 +19,7 @@ num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 10 # 1500
+max_steps: 385 # 77 * 5
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0
@@ -40,7 +40,7 @@ mixed_precision: "no"
 batch_size: 32
 eval_batch_size: 277
 gradient_accumulation_steps: 1
-train_eval_steps: 5 # 10
-eval_steps: 5 # 500
+train_eval_steps: 10
+eval_steps: 50
 eval_metric: "accuracy"
 seeds: [42, 123, 456, 789, 999]

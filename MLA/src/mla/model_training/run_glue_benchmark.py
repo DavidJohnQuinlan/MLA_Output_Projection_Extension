@@ -2,7 +2,7 @@ import argparse
 import subprocess
 import sys
 
-GLUE_TASKS = ["sst2", "mrpc", "qqp", "rte", "mnli", "qnli", "cola"]
+GLUE_TASKS = ["rte", "mrpc", "cola", "sst2", "qnli", "qqp", "mnli"]
 
 
 def get_config_name(architecture: str, task: str, kv: int, q: int, o: int) -> str:

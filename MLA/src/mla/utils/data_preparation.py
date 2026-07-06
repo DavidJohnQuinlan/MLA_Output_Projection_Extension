@@ -255,8 +255,8 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
     # Prepare the dataloaders
     val_split = "validation" if "validation" in dataset else "validation_matched"
     train_loader, val_loader = CreateDataloaders(config).create_dataloaders(
-        dataset["train"].select(range(100)),
-        dataset[val_split].select(range(100)),
+        dataset["train"],
+        dataset[val_split],
         train_collator,
         eval_collator,
     )
