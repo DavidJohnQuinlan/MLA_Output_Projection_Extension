@@ -160,7 +160,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     train_loader, val_loader = prepare_fine_tune_data(config, paths)
     logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(val_loader))
 
-    all_run_results = {"loss": [], "accuracy": [], "f1": []}
+    all_run_results = {"loss": [], "accuracy": [], "f1": [], "mcc": []}
 
     for seed in config.seeds:
         logger.info("Starting fine-tuning seed=%d", seed)
@@ -173,6 +173,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
         all_run_results["loss"].append(validation_loss.avg)
         all_run_results["accuracy"].append(validation_metrics["accuracy"])
         all_run_results["f1"].append(validation_metrics["f1"])
+        all_run_results["mcc"].append(validation_metrics["mcc"])
 
     # Save results to central CSV
     results = build_finetune_results(all_run_results, config)
@@ -196,6 +197,7 @@ def build_finetune_results(results: dict, config: DictConfig):
         "avg_finetune_validation_loss": f"{np.mean(results["loss"]):.4f} +/- {np.std(results["loss"]):.4f}",
         "avg_finetune_accuracy": f"{np.mean(results["accuracy"]):.4f} +/- {np.std(results["accuracy"]):.4f}",
         "avg_finetune_f1": f"{np.mean(results["f1"]):.4f} +/- {np.std(results["f1"]):.4f}",
+        "avg_finetune_mcc": f"{np.mean(results["mcc"]):.4f} +/- {np.std(results["mcc"]):.4f}",
         "max_steps": config.max_steps,
         "learning_rate": config.learning_rate,
         "batch_size": config.batch_size,

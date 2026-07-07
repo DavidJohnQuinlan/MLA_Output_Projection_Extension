@@ -277,6 +277,7 @@ class BaseModelTraining(ABC):
                                 eval_loss, eval_metrics = self.eval_model(eval_dataloader=eval_dataloader, training_eval=True)
                                 self.model.train()
                                 self.metric_fn.reset()
+                                self._train_step_start_time = time.time()
 
                                 # Save the best model
                                 if self._is_best_model(eval_loss, eval_metrics):
@@ -490,6 +491,7 @@ class ModelFineTuning(BaseModelTraining):
         wandb.define_metric("eval/accuracy", summary="max")
         wandb.define_metric("eval/loss", summary="min")
         wandb.define_metric("eval/f1", summary="max")
+        wandb.define_metric("eval/mcc", summary="max")
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.best_metric = 0.0
         self.history = {
@@ -498,11 +500,13 @@ class ModelFineTuning(BaseModelTraining):
             "train_recall": [],
             "train_precision": [],
             "train_f1": [],
+            "train_mcc": [],
             "val_loss": [],
             "val_accuracy": [],
             "val_recall": [],
             "val_precision": [],
             "val_f1": [],
+            "val_mcc": [],
         }
 
     def _log_metrics(
@@ -531,6 +535,7 @@ class ModelFineTuning(BaseModelTraining):
         self.history[f"{mode}_recall"].append(metrics["recall"])
         self.history[f"{mode}_precision"].append(metrics["precision"])
         self.history[f"{mode}_f1"].append(metrics["f1"])
+        self.history[f"{mode}_mcc"].append(metrics["mcc"])
 
         log_dict = {}
         if mode == "train":
@@ -539,6 +544,7 @@ class ModelFineTuning(BaseModelTraining):
             log_dict["train/precision"] = metrics["precision"]
             log_dict["train/recall"] = metrics["recall"]
             log_dict["train/f1"] = metrics["f1"]
+            log_dict["train/mcc"] = metrics["mcc"]
             log_dict["train/learning_rate"] = self.scheduler.get_last_lr()[0]
             log_dict["train/steps_per_sec"] = steps_per_sec
             log_dict["train/samples_per_sec"] = samples_per_sec
@@ -550,6 +556,7 @@ class ModelFineTuning(BaseModelTraining):
             log_dict["eval/precision"] = metrics["precision"]
             log_dict["eval/recall"] = metrics["recall"]
             log_dict["eval/f1"] = metrics["f1"]
+            log_dict["eval/mcc"] = metrics["mcc"]
             log_dict["eval/steps_per_sec"] = steps_per_sec
             log_dict["eval/samples_per_sec"] = samples_per_sec
 

@@ -1,10 +1,10 @@
 import csv
 import functools
+import logging
 import os
 import random
 import time
 from pathlib import Path
-import logging
 
 import numpy as np
 import torch
