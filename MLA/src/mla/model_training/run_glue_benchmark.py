@@ -14,11 +14,11 @@ def get_config_name(architecture: str, task: str, kv: int, q: int, o: int) -> st
     finetuning config directory.
 
     Args:
-        architecture: One of "MHA", "MLA", or "MLAE".
+        architecture: One of "MHA", "MHAE", "MLA", or "MLAE".
         task: GLUE task name in any case (e.g. "sst2", "MRPC").
         kv: KV compression dimension. Ignored for MHA.
         q: Query compression dimension. Ignored for MHA.
-        o: Output compression dimension. Used only for MLAE.
+        o: Output compression dimension. Used only for MLAE or MHAE.
 
     Returns:
         Hydra config name string, e.g. "SST2/tinybert_mla_sst2_kv128_q128".
@@ -27,6 +27,8 @@ def get_config_name(architecture: str, task: str, kv: int, q: int, o: int) -> st
     T = task.upper()
     if architecture == "MHA":
         return f"{T}/tinybert_mha_{t}"
+    elif architecture == "MHAE":
+        return f"{T}/tinybert_mhae_{t}_o{o}"
     elif architecture == "MLA":
         return f"{T}/tinybert_mla_{t}_kv{kv}_q{q}"
     elif architecture == "MLAE":
@@ -43,10 +45,10 @@ def run_glue_benchmark(architecture: str, kv: int, q: int, o: int) -> None:
     A summary of any failures is printed after all tasks complete.
 
     Args:
-        architecture: Attention mechanism to benchmark — "MHA", "MLA", or "MLAE".
+        architecture: Attention mechanism to benchmark — "MHA", "MHAE", "MLA", or "MLAE".
         kv: KV compression dimension used to resolve the config filename (MLA/MLAE only).
         q: Query compression dimension used to resolve the config filename (MLA/MLAE only).
-        o: Output compression dimension used to resolve the config filename (MLAE only).
+        o: Output compression dimension used to resolve the config filename (MLAE/MHAE only).
     """
     failed = []
     for task in GLUE_TASKS:
@@ -70,7 +72,7 @@ def run_glue_benchmark(architecture: str, kv: int, q: int, o: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--architecture", choices=["MHA", "MLA", "MLAE"], required=True)
+    parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
     parser.add_argument("--kv", type=int, default=None)
     parser.add_argument("--q", type=int, default=None)
     parser.add_argument("--o", type=int, default=None)

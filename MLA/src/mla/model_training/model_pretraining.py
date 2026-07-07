@@ -113,7 +113,6 @@ def build_pretrain_results(
         "o": config.output_compression_dim,
         "pre_training_validation_loss": f"{pretrainer.best_eval_loss:.4f}",
         "pre_training_top1_mlm_accuracy": f"{pretrainer.best_eval_metrics['accuracy']:.4f}",
-        "pre_training_top5_mlm_accuracy": f"{pretrainer.best_eval_metrics['top5_accuracy']:.4f}",
         "pre_training_cka": f"{avg_cka:.4f}",
         "max_steps": config.max_steps,
         "learning_rate": config.learning_rate,
