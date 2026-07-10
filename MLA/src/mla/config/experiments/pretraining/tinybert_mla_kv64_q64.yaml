@@ -1,0 +1,44 @@
+# General
+experiment_name: TinyBERT_MLA_kv64_q64
+attention_mechanism: MLA
+job_type: pre_training
+experiment_project: TinyBERT
+model_config_name: huawei-noah/TinyBERT_General_4L_312D
+kv_compression_dim: 64
+q_compression_dim: 64
+output_compression_dim: null
+
+# Dataset
+dataset_name: wikitext
+dataset_config_name: wikitext-103-raw-v1
+drop_last: True
+sentence_keys: ["text"]
+task_type: pre_training
+parallel_processes: 8
+num_workers: 0
+pin_memory: False
+
+# Optimizer
+max_steps: 25000
+warmup: True
+warmup_rate: 0.05
+max_norm: 1.0
+learning_rate: 5e-4
+weight_decay: 0.01
+
+# Model
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLA_kv64_q64
+hidden_size: 312
+max_seq_length: 128
+max_position_embeddings: 128
+mixed_precision: "no"
+
+# Training
+batch_size: 8
+eval_batch_size: 64
+gradient_accumulation_steps: 32
+mlm: True
+mlm_probability: 0.15
+train_eval_steps: 10
+eval_steps: 500
+eval_metric: loss
