@@ -12,8 +12,13 @@ from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
+
 from mla.models.BERT.bert_model.bert_config import BertConfig
 from mla.models.BERT.bert_model.bert_heads import BertModelForMLM
+
+from mla.models.GPT2.config import GPT2Config
+from mla.models.GPT2.heads import GPT2LMHeadModel
+
 from mla.utils.attention_hooks import collect_attention_head_activations
 from mla.utils.attention_utils import compute_model_cka
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
@@ -29,7 +34,7 @@ config_path = str(Path(__file__).parent.parent / "config" / "experiments" / "pre
 @hydra.main(version_base=None, config_path=config_path, config_name="tinybert_mha")
 def model_pretraining(config: DictConfig) -> None:
     """
-    Entry point for pre-training a BERT-based model using Masked Language Modeling.
+    Entry point for pre-training a BERT/GPT2 model.
 
     Loads the tokenizer, prepares the dataset and dataloaders, builds the model from
     config, and runs the pre-training loop via ModelPreTraining.
@@ -50,7 +55,8 @@ def model_pretraining(config: DictConfig) -> None:
 
     # Load the model Configuration
     logger.info("Loading checkpoint config: %s", config.model_config_name)
-    bert_config = BertConfig.from_pretrained(
+    # TODO: CHANGE THIS TO BE MORE GENERIC!
+    model_config = GPT2Config.from_pretrained(
         config.model_config_name,
         attention_mechanism=config.attention_mechanism,
         kv_compression_dim=config.kv_compression_dim,
@@ -58,15 +64,16 @@ def model_pretraining(config: DictConfig) -> None:
         output_compression_dim=config.output_compression_dim,
     )
 
-    # Prepare the BERT Model
-    bert_model = BertModelForMLM(bert_config)
+    # Prepare the model
+    # TODO: CHANGE THIS TO BE MORE GENERIC!
+    model = GPT2LMHeadModel(model_config)
 
     # Compile the model
-    compiled_bert_model = torch.compile(bert_model)
+    compiled_model = torch.compile(model)
 
     # Initialize pretraining class
     pretrainer = ModelPreTraining(
-       model=compiled_bert_model,
+       model=compiled_model,
        optimizer=AdamW,
        metric_fn=MetricEvaluation,
        config=config,
@@ -79,7 +86,7 @@ def model_pretraining(config: DictConfig) -> None:
     pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
 
     # Save results to central CSV
-    results = build_pretrain_results(pretrainer, bert_model, tokenizer, val_loader, config)
+    results = build_pretrain_results(pretrainer, model, tokenizer, val_loader, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
     logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_eval_loss)

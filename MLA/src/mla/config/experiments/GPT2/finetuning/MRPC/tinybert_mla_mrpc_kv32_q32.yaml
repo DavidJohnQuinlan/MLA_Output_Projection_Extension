@@ -1,0 +1,46 @@
+# @package _global_
+experiment_name: TinyBERT_MLA_MRPC_kv32_q32
+attention_mechanism: MLA
+job_type: fine_tuning
+experiment_project: TinyBERT
+model_config_name: huawei-noah/TinyBERT_General_4L_312D
+kv_compression_dim: 32
+q_compression_dim: 32
+output_compression_dim: null
+
+# Dataset
+dataset_name: glue
+dataset_config_name: mrpc
+drop_last: True
+sentence_keys: ["sentence1", "sentence2"]
+task_type: fine_tuning
+parallel_processes: 8
+num_workers: 0
+pin_memory: False
+
+# Optimizer
+max_steps: 1140 # 114 * 10
+warmup: True
+warmup_rate: 0.05
+max_norm: 1.0
+learning_rate: 3e-5
+weight_decay: 0.01
+
+# Model
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLA_kv32_q32
+fine_tuned_model_name: fine_tuning_mrpc__TinyBERT_MLA__kv32_q32
+dropout_rate: 0.1
+hidden_size: 312
+num_labels: 2
+max_seq_length: 128
+max_position_embeddings: 128
+mixed_precision: "no"
+
+# Training
+batch_size: 32
+eval_batch_size: 408
+gradient_accumulation_steps: 1
+train_eval_steps: 10
+eval_steps: 100
+eval_metric: "f1"
+seeds: [42, 123, 456, 789, 999]
