@@ -4,8 +4,8 @@ from transformers.cache_utils import Cache
 from transformers.generation import GenerationMixin
 from transformers.utils import can_return_tuple
 
-from mla.models.GPT2.dataclasses import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from mla.models.GPT2.model import GPT2Model
+from mla.models.GPT2.output_dataclasses import BaseModelOutputWithPastAndCrossAttentions, CausalLMOutputWithCrossAttentions
 from mla.models.GPT2.pretrained_model import GPT2PreTrainedModel
 
 

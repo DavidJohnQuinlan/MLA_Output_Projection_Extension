@@ -1,9 +1,14 @@
+# @package _global_
+defaults:
+  - /pre_training_schema
+  - _self_
+
 # General
 experiment_name: GPT2_MHA
 attention_mechanism: MHA
 job_type: pre_training
 experiment_project: GPT2
-# model_config_name: huawei-noah/TinyBERT_General_4L_312D
+model_config_name: gpt2
 kv_compression_dim: null
 q_compression_dim: null
 output_compression_dim: null
@@ -32,13 +37,12 @@ hidden_size: 312
 max_seq_length: 128
 max_position_embeddings: 128
 mixed_precision: "no"
+loss_type: ForCausalLMLoss
 
 # Training
 batch_size: 8
 eval_batch_size: 64
 gradient_accumulation_steps: 32
-mlm: True
-mlm_probability: 0.15
 train_eval_steps: 10
 eval_steps: 500
 eval_metric: loss

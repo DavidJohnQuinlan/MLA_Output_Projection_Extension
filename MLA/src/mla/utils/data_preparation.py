@@ -233,6 +233,9 @@ def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConf
 
 
 def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> tuple[DataLoader, DataLoader]:
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
     if config.task_type == "pre_training":
 
         # Define a seperate training and evaluation data collator

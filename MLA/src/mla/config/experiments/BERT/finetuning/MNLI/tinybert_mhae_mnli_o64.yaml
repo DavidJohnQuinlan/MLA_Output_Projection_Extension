@@ -1,4 +1,8 @@
 # @package _global_
+defaults:
+  - /fine_tuning_schema
+  - _self_
+
 experiment_name: TinyBERT_MHAE_MNLI_o64
 attention_mechanism: MHAE
 job_type: fine_tuning

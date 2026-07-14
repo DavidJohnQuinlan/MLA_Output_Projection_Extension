@@ -1,4 +1,8 @@
 # @package _global_
+defaults:
+  - /fine_tuning_schema
+  - _self_
+
 experiment_name: TinyBERT_MLA_QQP_kv32_q32
 attention_mechanism: MLA
 job_type: fine_tuning

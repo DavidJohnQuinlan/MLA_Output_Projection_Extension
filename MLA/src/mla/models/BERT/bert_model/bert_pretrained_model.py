@@ -1,6 +1,6 @@
 from torch import nn
 from transformers.modeling_utils import PreTrainedModel
-from transformers.models.bert.modeling_bert import BertLMPredictionHead, load_tf_weights_in_bert
+from transformers.models.bert.modeling_bert import BertLMPredictionHead  # , load_tf_weights_in_bert
 
 from mla.models.BERT.bert_model.bert_config import BertConfig
 
@@ -15,7 +15,7 @@ class BertPreTrainedModel(PreTrainedModel):
         base_model_prefix (str): Prefix used for the base model attribute ("bert").
     """
     config: BertConfig
-    load_tf_weights = load_tf_weights_in_bert
+    # load_tf_weights = load_tf_weights_in_bert
     base_model_prefix = "bert"
     supports_gradient_checkpointing = True
     _supports_sdpa = True

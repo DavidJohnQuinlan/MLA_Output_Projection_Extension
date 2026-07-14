@@ -82,3 +82,8 @@ class GPT2Config(PreTrainedConfig):
     reorder_and_upcast_attn: bool = False
     add_cross_attention: bool = False
     tie_word_embeddings: bool = True
+    loss_type: str = "ForCausalLMLoss"
+    attention_mechanism: str | None = None
+    kv_compression_dim: int | None = None
+    q_compression_dim: int | None = None
+    output_compression_dim: int | None = None

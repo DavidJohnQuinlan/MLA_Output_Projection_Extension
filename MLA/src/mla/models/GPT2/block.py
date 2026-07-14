@@ -3,7 +3,8 @@ from torch import nn
 from transformers.cache_utils import Cache
 from transformers.modeling_layers import GradientCheckpointingLayer
 
-from mla.models.GPT2.attention import GPT2MLP, GPT2Attention
+from mla.models.GPT2.attention import GPT2Attention
+from mla.models.GPT2.mlp import GPT2MLP
 
 
 class GPT2Block(GradientCheckpointingLayer):

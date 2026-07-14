@@ -1,8 +1,11 @@
+from dataclasses import dataclass
+
 import torch
 from transformers.cache_utils import Cache
 from transformers.utils import ModelOutput
 
 
+@dataclass
 class BaseModelOutputWithPastAndCrossAttentions(ModelOutput):
     """
     Base class for model's outputs that may also contain a past key/values (to speed up sequential decoding).
@@ -45,6 +48,7 @@ class BaseModelOutputWithPastAndCrossAttentions(ModelOutput):
     cross_attentions: tuple[torch.FloatTensor, ...] | None = None
 
 
+@dataclass
 class CausalLMOutputWithCrossAttentions(ModelOutput):
     """
     Base class for causal language model (or autoregressive) outputs.

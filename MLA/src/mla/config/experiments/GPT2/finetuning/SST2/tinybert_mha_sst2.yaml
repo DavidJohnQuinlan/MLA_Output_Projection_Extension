@@ -1,4 +1,8 @@
 # @package _global_
+defaults:
+  - /fine_tuning_schema
+  - _self_
+
 experiment_name: TinyBERT_MHA_SST2
 attention_mechanism: MHA
 job_type: fine_tuning

@@ -3,13 +3,13 @@ import math
 
 import torch
 from transformers import initialization as init
+from transformers.modeling_utils import PreTrainedModel
 from transformers.pytorch_utils import Conv1D
 from transformers.utils.output_capturing import OutputRecorder
 
 from mla.models.GPT2.attention import GPT2Attention
 from mla.models.GPT2.block import GPT2Block
 from mla.models.GPT2.config import GPT2Config
-from mla.models.GPT2.pretrained_model import PreTrainedModel
 
 
 class GPT2PreTrainedModel(PreTrainedModel):
@@ -22,7 +22,7 @@ class GPT2PreTrainedModel(PreTrainedModel):
     _supports_sdpa = True
     _supports_attention_backend = True
     _can_compile_fullgraph = True
-    _canr_record_outputs = {
+    _can_record_outputs = {
         "hidden_states": GPT2Block,
         "attentions": OutputRecorder(GPT2Attention, layer_name=".attn", index=1),
         "cross_attentions": OutputRecorder(GPT2Attention, layer_name=".crossattention", index=1),

@@ -2,11 +2,11 @@ import torch
 from torch import nn
 from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
 from transformers.masking_utils import create_bidirectional_mask, create_causal_mask
-from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.utils.generic import merge_with_config_defaults
 from transformers.utils.output_capturing import capture_outputs
 
 from mla.models.GPT2.block import GPT2Block
+from mla.models.GPT2.output_dataclasses import BaseModelOutputWithPastAndCrossAttentions
 from mla.models.GPT2.pretrained_model import GPT2PreTrainedModel
 
 

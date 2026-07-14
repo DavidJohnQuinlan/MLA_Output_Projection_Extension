@@ -6,7 +6,7 @@ from omegaconf import MISSING
 
 @dataclass
 class PreTrainingConfig:
-    """Training loop parameters for Masked Language Model pretraining."""
+    """Training loop parameters for BERT/GPT2 pretraining."""
 
     # ExperimentConfig
     experiment_name: str = MISSING
@@ -42,13 +42,14 @@ class PreTrainingConfig:
     max_seq_length: int = MISSING
     max_position_embeddings: int = MISSING
     mixed_precision: str = MISSING
+    loss_type: str = "ForCausalLMLoss"
 
     # Training
     batch_size: int = MISSING
     eval_batch_size: int = MISSING
     gradient_accumulation_steps: int = MISSING
-    mlm: bool = MISSING
-    mlm_probability: float = MISSING
+    mlm: bool = False
+    mlm_probability: float = 0.0
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
@@ -56,7 +57,7 @@ class PreTrainingConfig:
 
 @dataclass
 class FineTuningConfig:
-    """Training loop parameters for downstream classification fine-tuning."""
+    """Training loop parameters for BERT/GPT2 downstream classification fine-tuning."""
 
     # ExperimentConfig
     experiment_name: str = MISSING
@@ -107,5 +108,5 @@ class FineTuningConfig:
 
 
 cs = ConfigStore.instance()
-cs.store(name="pretrain_schema", node=PreTrainingConfig)
-cs.store(name="finetune_schema", node=FineTuningConfig)
+cs.store(name="pre_training_schema", node=PreTrainingConfig)
+cs.store(name="fine_tuning_schema", node=FineTuningConfig)

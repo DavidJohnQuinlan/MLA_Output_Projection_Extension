@@ -155,6 +155,62 @@ class MetricEvaluation:
         return results
 
 
+class CausalLMMetricEvaluation:
+    """
+    Computes and aggregates next-token prediction accuracy for causal language modeling.
+
+    Handles the one-position shift inherent to autoregressive training: logit at position
+    i predicts the token at position i+1. Ignores positions flagged with -100.
+
+    Attributes:
+        total (int): Total number of valid token positions evaluated.
+        correct (int): Cumulative count of correctly predicted next tokens.
+    """
+    def __init__(self):
+        """Initializes the metric tracker and resets counts to zero."""
+        self.reset()
+
+    def reset(self):
+        """
+        Resizes and zeroes out all historical verification accumulators back to an initial state.
+        """
+        self.total = 0
+        self.correct = 0
+
+    def update(self, logits: torch.Tensor, labels: torch.Tensor, mode: str):
+        """
+        Processes a raw model output batch, filtering elements and updating tracking totals.
+
+        Args:
+            logits (torch.Tensor): Unnormalized raw predictions from the language modeling head.
+                Shape can be 3D `(batch_size, seq_len, vocab_size)` or pre-flattened 2D `(total_tokens, vocab_size)`.
+            labels (torch.Tensor): Ground-truth target token matrix matching the spatial structure
+                of logits. Elements to bypass must be set to `-100`. Shape: `(batch_size, seq_len)` or `(total_tokens,)`.
+            mode (str, optional): Determines whether to calculate and store multi-rank
+                top-5 matching indexes alongside basic top-1 accuracy.
+        """
+        shift_logits = logits[:, :-1, :]
+        shift_labels = labels[:, 1:]
+        mask = shift_labels != -100
+        preds = torch.argmax(shift_logits[mask], dim=-1)
+        target = shift_labels[mask]
+        self.total += target.numel()
+        self.correct += (preds == target).sum().item()
+
+    def compute(self) -> dict[str, float]:
+        """
+        Calculates final aggregated dataset accuracies based on collected counts.
+
+        Returns:
+            dict[str, float]: A dictionary summarizing active scores. Keys include:
+                - `"accuracy"`: The global percentage score for correct next token match.
+                Returns an empty dictionary `{}` if no valid evaluations were registered.
+        """
+        if self.total == 0:
+            return {}
+        return {"accuracy": self.correct / self.total}
+
+
 class ClassificationMetricEvaluation:
     """
     Computes and aggregates classification metrics for sequence classification tasks.

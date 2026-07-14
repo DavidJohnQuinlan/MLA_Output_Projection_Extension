@@ -26,7 +26,7 @@ def get_pretrain_paths(root_dir: Path, config: DictConfig) -> Paths:
         Paths: Populated paths for pretraining data and model checkpoint.
     """
     return Paths(
-        tokenized_data_path = root_dir / TRAINING_DATA_DIR / "pretraining" / config.dataset_config_name,
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "pretraining" / config.dataset_config_name,
         model_file_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / f"{config.pretrained_model_name}.th",
     )
 
@@ -43,7 +43,7 @@ def get_finetune_paths(root_dir: Path, config: DictConfig) -> Paths:
         Paths: Populated paths for fine-tuning data, pretrained checkpoint, and fine-tuned model.
     """
     return Paths(
-        tokenized_data_path = root_dir / TRAINING_DATA_DIR / "finetuning" / config.dataset_config_name,
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "finetuning" / config.dataset_config_name,
         pretrained_model_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / f"{config.pretrained_model_name}.th",
         model_file_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / config.dataset_config_name / f"{config.fine_tuned_model_name}.th",
     )

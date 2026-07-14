@@ -1,4 +1,8 @@
 # @package _global_
+defaults:
+  - /fine_tuning_schema
+  - _self_
+
 experiment_name: TinyBERT_MLAE_MNLI_kv64_q64_o64
 attention_mechanism: MLAE
 job_type: fine_tuning
