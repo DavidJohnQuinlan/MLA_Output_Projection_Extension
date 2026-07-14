@@ -5,6 +5,7 @@ defaults:
 
 # General
 experiment_name: TinyBERT_MHA
+base_model: BERT
 attention_mechanism: MHA
 job_type: pre_training
 experiment_project: TinyBERT

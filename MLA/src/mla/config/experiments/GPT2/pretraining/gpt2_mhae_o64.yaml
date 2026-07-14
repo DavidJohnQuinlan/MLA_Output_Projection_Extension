@@ -5,6 +5,7 @@ defaults:
 
 # General
 experiment_name: TinyBERT_MHAE_o64
+base_model: GPT2
 attention_mechanism: MHAE
 job_type: pre_training
 experiment_project: TinyBERT

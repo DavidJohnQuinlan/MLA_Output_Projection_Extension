@@ -4,6 +4,7 @@ defaults:
   - _self_
 
 experiment_name: TinyBERT_MHA_RTE
+base_model: GPT2
 attention_mechanism: MHA
 job_type: fine_tuning
 experiment_project: TinyBERT

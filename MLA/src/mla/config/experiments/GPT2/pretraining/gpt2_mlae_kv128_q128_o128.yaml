@@ -5,6 +5,7 @@ defaults:
 
 # General
 experiment_name: TinyBERT_MLAE_kv128_q128_o128
+base_model: GPT2
 attention_mechanism: MLAE
 job_type: pre_training
 experiment_project: TinyBERT

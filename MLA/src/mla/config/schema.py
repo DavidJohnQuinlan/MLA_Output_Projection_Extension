@@ -43,6 +43,8 @@ class PreTrainingConfig:
     max_position_embeddings: int = MISSING
     mixed_precision: str = MISSING
     loss_type: str = "ForCausalLMLoss"
+    n_layer: int | None = None
+    n_head: int | None = None
 
     # Training
     batch_size: int = MISSING

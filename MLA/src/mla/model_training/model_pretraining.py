@@ -33,7 +33,7 @@ def model_pretraining(config: DictConfig) -> None:
     """
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_pretrain_paths(root_dir, config)
-    strategy = _STRATEGIES[config.experiment_project]
+    strategy = _STRATEGIES[config.base_model]
 
     # Define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)

@@ -4,6 +4,7 @@ defaults:
   - _self_
 
 experiment_name: TinyBERT_MHAE_CoLA_o64
+base_model: GPT2
 attention_mechanism: MHAE
 job_type: fine_tuning
 experiment_project: TinyBERT

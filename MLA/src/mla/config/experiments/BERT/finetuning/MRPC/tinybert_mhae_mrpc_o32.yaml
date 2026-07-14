@@ -4,6 +4,7 @@ defaults:
   - _self_
 
 experiment_name: TinyBERT_MHAE_MRPC_o32
+base_model: BERT
 attention_mechanism: MHAE
 job_type: fine_tuning
 experiment_project: TinyBERT

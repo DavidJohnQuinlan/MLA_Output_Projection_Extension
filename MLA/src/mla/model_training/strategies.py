@@ -140,7 +140,7 @@ class GPT2PretrainingStrategy(PretrainingStrategy):
 
 
 _STRATEGIES: dict[str, PretrainingStrategy] = {
-    "TinyBERT": BERTPretrainingStrategy(),
+    "BERT": BERTPretrainingStrategy(),
     "GPT2": GPT2PretrainingStrategy(),
 }
 

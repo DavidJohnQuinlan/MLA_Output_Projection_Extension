@@ -4,6 +4,7 @@ defaults:
   - _self_
 
 experiment_name: TinyBERT_MLAE_MNLI_kv64_q64_o64
+base_model: BERT
 attention_mechanism: MLAE
 job_type: fine_tuning
 experiment_project: TinyBERT
