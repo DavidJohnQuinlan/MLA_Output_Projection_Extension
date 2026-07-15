@@ -3,12 +3,12 @@ defaults:
   - /fine_tuning_schema
   - _self_
 
-experiment_name: TinyBERT_MHAE_RTE_o32
+experiment_name: TinyGPT2_MHAE_RTE_o32
 base_model: GPT2
 attention_mechanism: MHAE
 job_type: fine_tuning
-experiment_project: TinyBERT
-model_config_name: huawei-noah/TinyBERT_General_4L_312D
+experiment_project: TinyGPT2
+model_config_name: gpt2
 kv_compression_dim: null
 q_compression_dim: null
 output_compression_dim: 32
@@ -32,8 +32,8 @@ learning_rate: 3e-5
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MHAE_o32
-fine_tuned_model_name: fine_tuning_rte__TinyBERT_MHAE__o32
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MHAE_o32
+fine_tuned_model_name: fine_tuning_rte__TinyGPT2_MHAE__o32
 dropout_rate: 0.1
 hidden_size: 312
 num_labels: 2

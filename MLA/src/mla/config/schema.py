@@ -10,6 +10,7 @@ class PreTrainingConfig:
 
     # ExperimentConfig
     experiment_name: str = MISSING
+    base_model: str = MISSING
     attention_mechanism: str = MISSING
     job_type: str = MISSING
     experiment_project: str = MISSING
@@ -42,7 +43,7 @@ class PreTrainingConfig:
     max_seq_length: int = MISSING
     max_position_embeddings: int = MISSING
     mixed_precision: str = MISSING
-    loss_type: str = "ForCausalLMLoss"
+    loss_type: str | None = None
     n_layer: int | None = None
     n_head: int | None = None
 

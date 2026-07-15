@@ -20,7 +20,7 @@ from mla.models.BERT.bert_model.bert_heads import (
 )
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.model_utils import ClassificationMetricEvaluation, LossMeter
-from mla.utils.utils import append_to_results_csv, print_output_table, set_all_seeds, suppress_console_logging
+from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table, set_all_seeds
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    suppress_console_logging()
+    configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(root_dir, config)
 
@@ -154,7 +154,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    suppress_console_logging()
+    configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_finetune_paths(root_dir, config)
     train_loader, val_loader = prepare_fine_tune_data(config, paths)

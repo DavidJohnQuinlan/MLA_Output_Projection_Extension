@@ -94,11 +94,15 @@ def safe_hook_variable_gradient_stats(self, var, name, log_track):
     return handle
 
 
-def suppress_console_logging() -> None:
-    root = logging.getLogger()
-    for handler in root.handlers:
-        if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-            handler.setLevel(logging.WARNING)
+def configure_logging() -> None:
+    fmt = logging.Formatter(
+        "%(asctime)s %(levelname)-7s %(filename)s:%(lineno)d  %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    for h in logging.getLogger().handlers:
+        h.setFormatter(fmt)
+        if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler):
+            h.setLevel(logging.WARNING)
 
 
 def compute_compression_ratio(config: DictConfig) -> float:

@@ -1,1 +1,1 @@
-from . import schema
+from . import schema as schema

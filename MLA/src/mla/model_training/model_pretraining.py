@@ -10,11 +10,11 @@ from transformers import AutoTokenizer
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
 from mla.model_training.strategies import _STRATEGIES
-
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
-from mla.utils.utils import append_to_results_csv, print_output_table
+from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table
 
 logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments")
@@ -31,6 +31,7 @@ def model_pretraining(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
+    configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_pretrain_paths(root_dir, config)
     strategy = _STRATEGIES[config.base_model]

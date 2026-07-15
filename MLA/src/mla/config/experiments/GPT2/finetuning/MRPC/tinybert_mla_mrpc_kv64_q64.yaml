@@ -3,12 +3,12 @@ defaults:
   - /fine_tuning_schema
   - _self_
 
-experiment_name: TinyBERT_MLA_MRPC_kv64_q64
+experiment_name: TinyGPT2_MLA_MRPC_kv64_q64
 base_model: GPT2
 attention_mechanism: MLA
 job_type: fine_tuning
-experiment_project: TinyBERT
-model_config_name: huawei-noah/TinyBERT_General_4L_312D
+experiment_project: TinyGPT2
+model_config_name: gpt2
 kv_compression_dim: 64
 q_compression_dim: 64
 output_compression_dim: null
@@ -32,8 +32,8 @@ learning_rate: 3e-5
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MLA_kv64_q64
-fine_tuned_model_name: fine_tuning_mrpc__TinyBERT_MLA__kv64_q64
+pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MLA_kv64_q64
+fine_tuned_model_name: fine_tuning_mrpc__TinyGPT2_MLA__kv64_q64
 dropout_rate: 0.1
 hidden_size: 312
 num_labels: 2

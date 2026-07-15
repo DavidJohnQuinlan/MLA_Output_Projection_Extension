@@ -91,7 +91,6 @@ class BertConfig(PretrainedConfig):
         position_embedding_type="absolute",
         use_cache=True,
         classifier_dropout=None,
-        loss_type="ForCausalLMLoss",
         attention_mechanism=None,
         kv_compression_dim=None,
         q_compression_dim=None,
@@ -115,7 +114,6 @@ class BertConfig(PretrainedConfig):
         self.position_embedding_type = position_embedding_type
         self.use_cache = use_cache
         self.classifier_dropout = classifier_dropout
-        self.loss_type = loss_type
         self.attention_mechanism = attention_mechanism
         self.kv_compression_dim = kv_compression_dim
         self.q_compression_dim = q_compression_dim

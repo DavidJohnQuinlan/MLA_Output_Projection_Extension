@@ -39,7 +39,7 @@ class AttentionHeadHook:
         self.hidden_size = self.model.config.hidden_size
         self.head_dim = self.hidden_size // self.n_heads
 
-    def hook_fn(self, layer_idx: int):
+    def bert_hook_fn(self, layer_idx: int):
         """
         Returns a forward hook that captures and reshapes attention head activations for a given layer.
 
@@ -62,13 +62,43 @@ class AttentionHeadHook:
 
         return hook
 
+    def gpt2_hook_fn(self, layer_idx: int):
+        """
+        Returns a forward hook that captures and reshapes attention head activations for a given layer.
+
+        Args:
+            layer_idx (int): Index of the encoder layer being hooked.
+        """
+        def hook(module, inputs):
+            attn_weights = inputs[0]
+            batch_size, seq_len, _ = attn_weights.shape
+
+            heads = (
+                attn_weights
+                .reshape(batch_size, seq_len, self.n_heads, self.head_dim)
+                .permute(2, 0, 1, 3)
+                .reshape(self.n_heads, -1, self.head_dim)
+                .detach()
+                .cpu()
+            )
+            self.activations[layer_idx] = heads
+
+        return hook
+
     def register(self) -> None:
         """Register forward hooks on all encoder self-attention layers."""
-        for i, layer in enumerate(self.model.bert.encoder.layer):
-            handle = layer.attention.self.register_forward_hook(
-                self.hook_fn(i)
-            )
-            self.handles.append(handle)
+        if hasattr(self.model, "bert"):
+            for i, layer in enumerate(self.model.bert.encoder.layer):
+                handle = layer.attention.self.register_forward_hook(
+                    self.bert_hook_fn(i)
+                )
+                self.handles.append(handle)
+        elif hasattr(self.model, "transformer"):
+            for i, h in enumerate(self.model.transformer.h):
+                handle = h.attn.c_proj.register_forward_pre_hook(
+                    self.gpt2_hook_fn(i)
+                )
+                self.handles.append(handle)
 
     def remove(self) -> None:
         """Remove all registered hooks and clear stored handles."""
