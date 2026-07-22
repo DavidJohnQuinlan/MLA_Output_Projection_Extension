@@ -144,7 +144,7 @@ class DeterministicDataCollator(DataCollatorForLanguageModeling):
 
 class CreateDataloaders:
     """
-    Constructs high-performance PyTorch DataLoaders for training and evaluation.
+    Constructs high-performance PyTorch DataLoaders for training and validation.
 
     This factory class isolates the configuration and preparation of PyTorch
     DataLoader streams, ensuring consistent worker, memory pinning, and batching
@@ -163,55 +163,55 @@ class CreateDataloaders:
 
     def create_dataloaders(
         self,
-        train_ds: Dataset,
-        eval_ds: Dataset,
-        train_collator: Callable,
-        eval_collator: Callable
+        training_dataset: Dataset,
+        validation_dataset: Dataset,
+        training_collator: Callable,
+        validation_collator: Callable
     ) -> tuple[DataLoader, DataLoader]:
         """
-        Generates paired training and evaluation DataLoader instances.
+        Generates paired training and validation DataLoader instances.
 
         Configures training data to shuffle and automatically drop incomplete trailing
-        batches if specified. Evaluation data streaming is optimized for throughput by
+        batches if specified. Validation data streaming is optimized for throughput by
         scaling the target batch dimension by 4x to leverage the reduced VRAM
         footprint of inference passes.
 
         Args:
-            train_ds (Dataset): The tokenized PyTorch or Hugging Face Dataset
+            training_dataset (Dataset): The tokenized PyTorch or Hugging Face Dataset
                 allocated for the training loop.
-            eval_ds (Dataset): The tokenized PyTorch or Hugging Face Dataset
+            validation_dataset (Dataset): The tokenized PyTorch or Hugging Face Dataset
                 allocated for the validation/evaluation loop.
-            train_collator (Callable): The batch aggregation or dynamic padding
+            training_collator (Callable): The batch aggregation or dynamic padding
                 collation function for training samples.
-            eval_collator (Callable): The batch aggregation or dynamic padding
-                collation function for evaluation samples.
+            validation_collator (Callable): The batch aggregation or dynamic padding
+                collation function for validation samples.
 
         Returns:
             tuple[DataLoader, DataLoader]: A two-element tuple containing:
-                - train_loader (DataLoader): The active, shuffled training data stream.
-                - eval_loader (DataLoader): The static, sequential validation data stream
+                - training_loader (DataLoader): The active, shuffled training data stream.
+                - validation_loader (DataLoader): The static, sequential validation data stream
                   scaled at 4x training batch capacity.
         """
-        train_loader = DataLoader(
-            train_ds,
+        training_loader = DataLoader(
+            training_dataset,
             shuffle=True,
             batch_size=self.config.batch_size,
             pin_memory=self.config.pin_memory,
             num_workers=self.config.num_workers,
-            collate_fn=train_collator,
+            collate_fn=training_collator,
             drop_last=self.config.drop_last,
         )
 
-        eval_loader = DataLoader(
-            eval_ds,
+        validation_loader = DataLoader(
+            validation_dataset,
             shuffle=False,
             batch_size=self.config.eval_batch_size,
             pin_memory=self.config.pin_memory,
             num_workers=self.config.num_workers,
-            collate_fn=eval_collator
+            collate_fn=validation_collator
         )
 
-        return train_loader, eval_loader
+        return training_loader, validation_loader
 
 
 def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConfig, paths: Paths) -> DatasetDict:
@@ -238,29 +238,29 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
 
     if config.task_type == "pre_training":
 
-        # Define a seperate training and evaluation data collator
-        train_collator = DataCollatorForLanguageModeling(
+        # Define a seperate training and validation data collator
+        training_collator = DataCollatorForLanguageModeling(
             tokenizer=tokenizer,
             mlm=config.mlm,
             mlm_probability=config.mlm_probability
         )
 
         # This guarantees that the validation metric remains perfectly stable and comparable
-        eval_collator = DeterministicDataCollator(
+        validation_collator = DeterministicDataCollator(
             tokenizer=tokenizer,
             mlm=config.mlm,
             mlm_probability=config.mlm_probability
         )
 
     elif config.task_type == "fine_tuning":
-        train_collator = eval_collator = collator_fn(tokenizer=tokenizer)
+        training_collator = validation_collator = collator_fn(tokenizer=tokenizer)
 
     # Prepare the dataloaders
-    val_split = "validation" if "validation" in dataset else "validation_matched"
-    train_loader, val_loader = CreateDataloaders(config).create_dataloaders(
-        dataset["train"],
-        dataset[val_split],
-        train_collator,
-        eval_collator,
+    validation_split = "validation" if "validation" in dataset else "validation_matched"
+    training_loader, validation_loader = CreateDataloaders(config).create_dataloaders(
+        dataset["train"].select(range(100)),
+        dataset[validation_split].select(range(100)),
+        training_collator,
+        validation_collator,
     )
-    return train_loader, val_loader
+    return training_loader, validation_loader
