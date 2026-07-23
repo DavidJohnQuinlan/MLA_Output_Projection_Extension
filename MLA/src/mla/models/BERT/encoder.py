@@ -4,8 +4,8 @@ import torch
 from torch import nn
 from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
 
-from mla.models.BERT.bert_model.bert_dataclasses import BaseModelOutputWithPastAndCrossAttentions
-from mla.models.BERT.bert_model.bert_layer import BertLayer
+from mla.models.BERT.dataclasses import BaseModelOutputWithPastAndCrossAttentions
+from mla.models.BERT.layer import BertLayer
 
 logger = logging.getLogger(__name__)
 

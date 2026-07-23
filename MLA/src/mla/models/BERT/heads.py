@@ -5,9 +5,9 @@ import torch.nn.functional as F
 from torch import nn
 from transformers.modeling_outputs import SequenceClassifierOutput
 
-from mla.models.BERT.bert_model.bert_dataclasses import MaskedLMOutput
-from mla.models.BERT.bert_model.bert_model import BertModel
-from mla.models.BERT.bert_model.bert_pretrained_model import BertPreTrainedModel
+from mla.models.BERT.dataclasses import MaskedLMOutput
+from mla.models.BERT.model import BertModel
+from mla.models.BERT.pretrained_model import BertPreTrainedModel
 
 
 class BertModelForMLM(BertPreTrainedModel):

@@ -12,8 +12,8 @@ from transformers import PreTrainedTokenizerBase
 
 from mla.config.paths import Paths
 from mla.model_training.model_training import ModelPreTraining
-from mla.models.BERT.bert_model.bert_config import BertConfig
-from mla.models.BERT.bert_model.bert_heads import BERTModelForClassification, BertModelForMLM
+from mla.models.BERT.config import BertConfig
+from mla.models.BERT.heads import BERTModelForClassification, BertModelForMLM
 from mla.models.GPT2.config import GPT2Config
 from mla.models.GPT2.heads import GPT2ForSequenceClassification, GPT2LMHeadModel
 from mla.utils.attention_hooks import collect_attention_head_activations

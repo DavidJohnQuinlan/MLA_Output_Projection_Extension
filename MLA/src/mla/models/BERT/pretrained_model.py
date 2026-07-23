@@ -2,7 +2,7 @@ from torch import nn
 from transformers.modeling_utils import PreTrainedModel
 from transformers.models.bert.modeling_bert import BertLMPredictionHead  # , load_tf_weights_in_bert
 
-from mla.models.BERT.bert_model.bert_config import BertConfig
+from mla.models.BERT.config import BertConfig
 
 
 class BertPreTrainedModel(PreTrainedModel):

@@ -3,11 +3,11 @@ import torch
 from transformers.cache_utils import Cache
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask_for_sdpa, _prepare_4d_causal_attention_mask_for_sdpa
 
-from mla.models.BERT.bert_model.bert_dataclasses import BaseModelOutputWithPoolingAndCrossAttentions
-from mla.models.BERT.bert_model.bert_embeddings import BertEmbeddings
-from mla.models.BERT.bert_model.bert_encoder import BertEncoder
-from mla.models.BERT.bert_model.bert_pooler import BertPooler
-from mla.models.BERT.bert_model.bert_pretrained_model import BertPreTrainedModel
+from mla.models.BERT.dataclasses import BaseModelOutputWithPoolingAndCrossAttentions
+from mla.models.BERT.embeddings import BertEmbeddings
+from mla.models.BERT.encoder import BertEncoder
+from mla.models.BERT.pooler import BertPooler
+from mla.models.BERT.pretrained_model import BertPreTrainedModel
 
 
 class BertModel(BertPreTrainedModel):

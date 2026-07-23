@@ -6,8 +6,8 @@ from transformers.cache_utils import Cache
 from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.utils.deprecation import deprecate_kwarg
 
-from mla.models.BERT.bert_model.bert_ffn import BertIntermediate, BertOutput
-from mla.models.BERT.bert_model.self_attention import BertAttention
+from mla.models.BERT.ffn import BertIntermediate, BertOutput
+from mla.models.BERT.attention import BertAttention
 
 
 class BertLayer(GradientCheckpointingLayer):
