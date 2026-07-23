@@ -34,11 +34,13 @@ weight_decay: 0.01
 # Model
 pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MHAE_o64
 fine_tuned_model_name: fine_tuning_mrpc__TinyGPT2_MHAE__o64
-dropout_rate: 0.1
+n_layer: 6
+n_head: 4
 hidden_size: 312
-num_labels: 2
 max_seq_length: 128
 max_position_embeddings: 128
+dropout_rate: 0.1
+num_labels: 2
 mixed_precision: "no"
 
 # Training

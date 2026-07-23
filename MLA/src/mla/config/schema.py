@@ -64,6 +64,7 @@ class FineTuningConfig:
 
     # ExperimentConfig
     experiment_name: str = MISSING
+    base_model: str = MISSING
     attention_mechanism: str = MISSING
     job_type: str = MISSING
     experiment_project: str = MISSING
@@ -99,6 +100,8 @@ class FineTuningConfig:
     max_seq_length: int = MISSING
     max_position_embeddings: int = MISSING
     mixed_precision: str = MISSING
+    n_layer: int | None = None
+    n_head: int | None = None
 
     # Training
     batch_size: int = MISSING

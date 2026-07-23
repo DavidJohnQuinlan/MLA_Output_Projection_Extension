@@ -131,7 +131,7 @@ class GPT2Model(GPT2PreTrainedModel):
 
         output_shape = (-1,) + input_shape[1:] + (hidden_states.size(-1),)
 
-        for _i, block in enumerate(self.h):
+        for _, block in enumerate(self.h):
             hidden_states = block(
                 hidden_states,
                 past_key_values if not (self.gradient_checkpointing and self.training) else None,

@@ -62,6 +62,7 @@ class GPT2Config(PreTrainedConfig):
     n_layer: int = 12
     n_head: int = 12
     n_inner: int | None = None
+    num_labels: int | None = None
     activation_function: str = "gelu_new"
     resid_pdrop: float | int = 0.1
     embd_pdrop: float | int = 0.1
@@ -77,7 +78,7 @@ class GPT2Config(PreTrainedConfig):
     use_cache: bool = True
     bos_token_id: int | None = 50256
     eos_token_id: int | list[int] | None = 50256
-    pad_token_id: int | None = None
+    pad_token_id: int | None = 50256
     scale_attn_by_inverse_layer_idx: bool = False
     reorder_and_upcast_attn: bool = False
     add_cross_attention: bool = False

@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
 from mla.model_training.model_training import ModelPreTraining
-from mla.model_training.strategies import _STRATEGIES
+from mla.model_training.strategies import _PRETRAINING_STRATEGIES
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table
 
@@ -20,7 +20,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 config_path = str(Path(__file__).parent.parent / "config" / "experiments")
 
 
-@hydra.main(version_base=None, config_path=config_path, config_name="BERT/pretraining/tinybert_mha")
+@hydra.main(version_base=None, config_path=config_path, config_name="GPT2/pretraining/tinygpt2_mha")
 def model_pretraining(config: DictConfig) -> None:
     """
     Entry point for pre-training a BERT/GPT2 model.
@@ -34,15 +34,15 @@ def model_pretraining(config: DictConfig) -> None:
     configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
     paths = get_pretrain_paths(root_dir, config)
-    strategy = _STRATEGIES[config.base_model]
+    strategy = _PRETRAINING_STRATEGIES[config.base_model]
 
     # Define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
 
     # Import the datasets and prepare dataloaders
     dataset = import_and_prepare_data(tokenizer, config, paths)
-    train_loader, val_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
-    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(val_loader))
+    train_loader, validation_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
+    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(validation_loader))
 
     # Load and compile the model
     logger.info("Loading checkpoint config: %s", config.model_config_name)
@@ -61,13 +61,13 @@ def model_pretraining(config: DictConfig) -> None:
     # Start training
     logger.info("Starting pretraining — attention=%s  lr=%s  max_steps=%d",
                 config.attention_mechanism, config.learning_rate, config.max_steps)
-    pretrainer.train_model(training_dataloader=train_loader, eval_dataloader=val_loader)
+    pretrainer.train_model(training_dataloader=train_loader, validation_dataloader=validation_loader)
 
     # Save results to central CSV
-    results = strategy.build_results(pretrainer, model, tokenizer, val_loader, config)
+    results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
-    logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_eval_loss)
+    logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_validation_loss)
 
 
 if __name__ == "__main__":

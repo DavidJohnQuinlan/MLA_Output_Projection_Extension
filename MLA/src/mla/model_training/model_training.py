@@ -42,7 +42,7 @@ class BaseModelTraining(ABC):
     ):
 
         self.training_bar = None
-        self.eval_bar = None
+        self.validation_bar = None
         self.scheduler = None
 
         self.config = config
@@ -58,10 +58,10 @@ class BaseModelTraining(ABC):
         self.global_step = 0
         self.last_logged_global_step = 0
         self.epoch = 0
-        self.best_eval_loss = float("inf")
+        self.best_validation_loss = float("inf")
         self._train_step_start_time = None
-        self._eval_step_start_time = None
-        self.best_eval_metrics = None
+        self._validation_step_start_time = None
+        self.best_validation_metrics = None
         self.best_loss_metrics = None
 
 
@@ -119,13 +119,13 @@ class BaseModelTraining(ABC):
     def _init_progress_bars(
         self,
         training_dataloader: DataLoader | None = None,
-        eval_dataloader: DataLoader | None = None,
+        validation_dataloader: DataLoader | None = None,
         reset: bool = False,
         mode: str | None = None,
         epoch: int | None = None
     ) -> None:
         """
-        Initializes or resets training/evaluation tqdm progress bars.
+        Initializes or resets training/validation tqdm progress bars.
         """
 
         # Updates existing progress bars without creating new objects
@@ -134,29 +134,29 @@ class BaseModelTraining(ABC):
                 self.training_bar.set_description(f"Epoch {epoch}")
                 self.training_bar.reset(total=len(training_dataloader))
 
-            elif mode == "eval" and eval_dataloader is not None:
-                self.eval_bar.set_description(f"Eval @ Step {self.global_step}")
-                self.eval_bar.reset(total=len(eval_dataloader))
+            elif mode == "validation" and validation_dataloader is not None:
+                self.validation_bar.set_description(f"Eval @ Step {self.global_step}")
+                self.validation_bar.reset(total=len(validation_dataloader))
 
-            elif mode == "post_training_eval" and eval_dataloader is not None:
+            elif mode == "post_training_eval" and validation_dataloader is not None:
                 return
 
         # Create the tqdm progress bars for the first time
         else:
             self.training_bar = tqdm(total=len(training_dataloader), position=0, desc="Training - Epoch 1", leave=True)
-            self.eval_bar = tqdm(total=len(eval_dataloader), position=1, desc="Validation", leave=True)
+            self.validation_bar = tqdm(total=len(validation_dataloader), position=1, desc="Validation", leave=True)
 
     def _update_progress_bars(self, mode: str, loss_value: float) -> None:
         """
-        Update the training or evaluation tqdm progress bar.
+        Update the training or validation tqdm progress bar.
         """
         if mode == "train":
             self.training_bar.update(1)
             self.training_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
 
-        elif mode == "eval":
-            self.eval_bar.update(1)
-            self.eval_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
+        elif mode == "validation":
+            self.validation_bar.update(1)
+            self.validation_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
 
         elif mode == "post_training_eval":
             return
@@ -166,15 +166,15 @@ class BaseModelTraining(ABC):
         Close the progress bars once we complete model training.
         """
         if self.training_bar: self.training_bar.close()
-        if self.eval_bar: self.eval_bar.close()
+        if self.validation_bar: self.validation_bar.close()
 
-    def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
+    def _is_best_model(self, validation_loss: LossMeter, validation_metrics: dict) -> bool:
         """
         Defines whether the current model is better than the best loss value.
         """
-        if eval_loss.avg < self.best_eval_loss:
-            self.best_eval_loss = eval_loss.avg
-            wandb.run.summary["best_eval_loss"] = eval_loss.avg
+        if validation_loss.avg < self.best_validation_loss:
+            self.best_validation_loss = validation_loss.avg
+            wandb.run.summary["best_validation_loss"] = validation_loss.avg
             return True
         return False
 
@@ -189,20 +189,20 @@ class BaseModelTraining(ABC):
         total_norm: float | None = None,
     ) -> None: ...
 
-    def _run_optimization_loop(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
+    def _run_optimization_loop(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         """
         Main method which details all steps taken during model training. These include defining the warm-up scheduler, preparing
-        the training and evaluation datasets and subsequently iterating through them during model training.
+        the training and validation datasets and subsequently iterating through them during model training.
 
         Args:
             training_dataloader (DataLoader): The pre-batched training dataset.
-            eval_dataloader (DataLoader): The pre-batched evaluation dataset.
+            validation_dataloader (DataLoader): The pre-batched validation dataset.
         """
-        training_dataloader, eval_dataloader = self.accelerator.prepare(
-            training_dataloader, eval_dataloader
+        training_dataloader, validation_dataloader = self.accelerator.prepare(
+            training_dataloader, validation_dataloader
         )
         self._setup_scheduler()
-        self._init_progress_bars(training_dataloader=training_dataloader, eval_dataloader=eval_dataloader, reset=False)
+        self._init_progress_bars(training_dataloader=training_dataloader, validation_dataloader=validation_dataloader, reset=False)
         self._train_step_start_time = time.time()
 
         # For each step
@@ -273,68 +273,68 @@ class BaseModelTraining(ABC):
                         if (self.global_step % self.config.eval_steps == 0 and self.global_step > 0):
                             if self.accelerator.is_main_process:
 
-                                # Evaluate the current model on the evaluation dataset
-                                eval_loss, eval_metrics = self.eval_model(eval_dataloader=eval_dataloader, training_eval=True)
+                                # Evaluate the current model on the validation dataset
+                                validation_loss, validation_metrics = self.eval_model(validation_dataloader=validation_dataloader, training_eval=True)
                                 self.model.train()
                                 self.metric_fn.reset()
                                 self._train_step_start_time = time.time()
 
                                 # Save the best model
-                                if self._is_best_model(eval_loss, eval_metrics):
+                                if self._is_best_model(validation_loss, validation_metrics):
                                     self.save_model()
-                                    self.best_eval_metrics = eval_metrics
-                                    self.best_loss_metrics = eval_loss
+                                    self.best_validation_metrics = validation_metrics
+                                    self.best_loss_metrics = validation_loss
         self._close_progress_bars()
 
-    def eval_model(self, eval_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
+    def eval_model(self, validation_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
         """
         Evaluate the model on some pre-batched dataset.
 
-        Calculate the evaluation metrics and loss for the model, can be invoked either during or after model training.
+        Calculate the validation metrics and loss for the model, can be invoked either during or after model training.
 
         Args:
-            eval_dataloader (DataLoader): The pre-batched evaluation dataset.
+            validation_dataloader (DataLoader): The pre-batched validation dataset.
             training_eval (bool): True if evaluating during training false otherwise. Defaults to True.
         """
         # Prepare for model evaluation
-        mode = "eval" if training_eval else "post_training_eval"
+        mode = "validation" if training_eval else "post_training_eval"
         self.model.eval()
         self.metric_fn.reset()
-        eval_loss = LossMeter()
+        validation_loss = LossMeter()
 
-        eval_dataloader = self.accelerator.prepare(eval_dataloader)
-        self._init_progress_bars(eval_dataloader=eval_dataloader, reset=True, mode=mode)
-        self._eval_step_start_time = time.time()
+        validation_dataloader = self.accelerator.prepare(validation_dataloader)
+        self._init_progress_bars(validation_dataloader=validation_dataloader, reset=True, mode=mode)
+        self._validation_step_start_time = time.time()
 
         with torch.no_grad():
-            for batch in eval_dataloader:
+            for batch in validation_dataloader:
 
                 # Forward pass
                 outputs = self.model(**batch)
 
-                # Calculate and update eval loss and metrics
+                # Calculate and update validation loss and metrics
                 loss = outputs.loss.detach().cpu().item()
-                eval_loss.update(loss, n=batch["input_ids"].size(0))
-                self._update_progress_bars(mode=mode, loss_value=eval_loss.avg)
+                validation_loss.update(loss, n=batch["input_ids"].size(0))
+                self._update_progress_bars(mode=mode, loss_value=validation_loss.avg)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
-                eval_metrics = self.metric_fn.compute()
+                validation_metrics = self.metric_fn.compute()
 
-            elapsed = time.time() - self._eval_step_start_time
-            steps_per_sec = len(eval_dataloader) / elapsed
-            samples_per_sec = len(eval_dataloader.dataset) / elapsed
+            elapsed = time.time() - self._validation_step_start_time
+            steps_per_sec = len(validation_dataloader) / elapsed
+            samples_per_sec = len(validation_dataloader.dataset) / elapsed
 
             # If evaluating post training run
             if training_eval:
                 self._log_metrics(
-                    mode="val",
-                    loss=eval_loss,
-                    metrics=eval_metrics,
+                    mode="validation",
+                    loss=validation_loss,
+                    metrics=validation_metrics,
                     steps_per_sec=steps_per_sec,
                     samples_per_sec=samples_per_sec,
                 )
             self.metric_fn.reset()
 
-        return eval_loss, eval_metrics
+        return validation_loss, validation_metrics
 
     def save_model(self) -> None:
         """
@@ -403,7 +403,7 @@ class ModelPreTraining(BaseModelTraining):
             mode=self.wandb_mode,
         )
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        self.history = {"train_loss": [], "val_loss": [], "train_accuracy": [], "val_accuracy": []}
+        self.history = {"train_loss": [], "validation_loss": [], "train_accuracy": [], "validation_accuracy": []}
 
     def _log_metrics(
         self,
@@ -415,12 +415,12 @@ class ModelPreTraining(BaseModelTraining):
         total_norm: float | None = None
     ) -> None:
         """
-        Log the training or evaluation loss and metrics to wandb UI and to local dictionary.
+        Log the training or validation loss and metrics to wandb UI and to local dictionary.
 
         Args:
-            mode (str): The target bar to update; must be "train" or "eval".
-            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages.
-            metrics (dict): Dictionary containing training or evaluation metrics.
+            mode (str): The target bar to update; must be "train" or "validation".
+            loss (LossMeter): LossMeter object that contains training or validation loss totals and averages.
+            metrics (dict): Dictionary containing training or validation metrics.
             steps_per_sec (float): Number of steps taken per second.
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
@@ -437,16 +437,16 @@ class ModelPreTraining(BaseModelTraining):
             log_dict["train/samples_per_sec"] = samples_per_sec
             log_dict["train/grad_norm"] = total_norm
 
-        elif mode == "val":
-            log_dict["eval/loss"] = loss.avg
-            log_dict["eval/accuracy"] = metrics["accuracy"]
-            log_dict["eval/steps_per_sec"] = steps_per_sec
-            log_dict["eval/samples_per_sec"] = samples_per_sec
+        elif mode == "validation":
+            log_dict["validation/loss"] = loss.avg
+            log_dict["validation/accuracy"] = metrics["accuracy"]
+            log_dict["validation/steps_per_sec"] = steps_per_sec
+            log_dict["validation/samples_per_sec"] = samples_per_sec
 
         wandb.log(log_dict, step=self.global_step)
 
-    def train_model(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
-        self._run_optimization_loop(training_dataloader, eval_dataloader)
+    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
+        self._run_optimization_loop(training_dataloader, validation_dataloader)
         wandb.unwatch()
         wandb.finish()
 
@@ -488,10 +488,10 @@ class ModelFineTuning(BaseModelTraining):
             tags=[config.attention_mechanism, config.dataset_config_name],
             mode=self.wandb_mode,
         )
-        wandb.define_metric("eval/accuracy", summary="max")
-        wandb.define_metric("eval/loss", summary="min")
-        wandb.define_metric("eval/f1", summary="max")
-        wandb.define_metric("eval/mcc", summary="max")
+        wandb.define_metric("validation/accuracy", summary="max")
+        wandb.define_metric("validation/loss", summary="min")
+        wandb.define_metric("validation/f1", summary="max")
+        wandb.define_metric("validation/mcc", summary="max")
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.best_metric = 0.0
         self.history = {
@@ -501,12 +501,12 @@ class ModelFineTuning(BaseModelTraining):
             "train_precision": [],
             "train_f1": [],
             "train_mcc": [],
-            "val_loss": [],
-            "val_accuracy": [],
-            "val_recall": [],
-            "val_precision": [],
-            "val_f1": [],
-            "val_mcc": [],
+            "validation_loss": [],
+            "validation_accuracy": [],
+            "validation_recall": [],
+            "validation_precision": [],
+            "validation_f1": [],
+            "validation_mcc": [],
         }
 
     def _log_metrics(
@@ -519,12 +519,12 @@ class ModelFineTuning(BaseModelTraining):
         total_norm: float | None = None
     ) -> None:
         """
-        Log the training or evaluation loss and metrics to wandb UI and to local dictionary.
+        Log the training or validation loss and metrics to wandb UI and to local dictionary.
 
         Args:
-            mode (str): The target bar to update; must be "train" or "eval".
-            loss (LossMeter): LossMeter object that contains training or evaluation loss totals and averages.
-            metrics (dict): Dictionary containing training or evaluation metrics.
+            mode (str): The target bar to update; must be "train" or "validation".
+            loss (LossMeter): LossMeter object that contains training or validation loss totals and averages.
+            metrics (dict): Dictionary containing training or validation metrics.
             steps_per_sec (float): Number of steps taken per second.
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
@@ -550,32 +550,32 @@ class ModelFineTuning(BaseModelTraining):
             log_dict["train/samples_per_sec"] = samples_per_sec
             log_dict["train/grad_norm"] = total_norm
 
-        elif mode == "val":
-            log_dict["eval/loss"] = loss.avg
-            log_dict["eval/accuracy"] = metrics["accuracy"]
-            log_dict["eval/precision"] = metrics["precision"]
-            log_dict["eval/recall"] = metrics["recall"]
-            log_dict["eval/f1"] = metrics["f1"]
-            log_dict["eval/mcc"] = metrics["mcc"]
-            log_dict["eval/steps_per_sec"] = steps_per_sec
-            log_dict["eval/samples_per_sec"] = samples_per_sec
+        elif mode == "validation":
+            log_dict["validation/loss"] = loss.avg
+            log_dict["validation/accuracy"] = metrics["accuracy"]
+            log_dict["validation/precision"] = metrics["precision"]
+            log_dict["validation/recall"] = metrics["recall"]
+            log_dict["validation/f1"] = metrics["f1"]
+            log_dict["validation/mcc"] = metrics["mcc"]
+            log_dict["validation/steps_per_sec"] = steps_per_sec
+            log_dict["validation/samples_per_sec"] = samples_per_sec
 
         wandb.log(log_dict, step=self.global_step)
 
-    def _is_best_model(self, eval_loss: LossMeter, eval_metrics: dict) -> bool:
+    def _is_best_model(self, validation_loss: LossMeter, validation_metrics: dict) -> bool:
         """
         Defines whether the current model is better than the best metric value.
         """
 
         eval_metric = self.config.eval_metric
-        if eval_metrics[eval_metric] > self.best_metric:
-            self.best_metric = eval_metrics[eval_metric]
-            wandb.run.summary[f"best_{self.config.eval_metric}"] = eval_metrics[self.config.eval_metric]
-            wandb.run.summary["best_eval_loss"] = eval_loss.avg
+        if validation_metrics[eval_metric] > self.best_metric:
+            self.best_metric = validation_metrics[eval_metric]
+            wandb.run.summary[f"best_{self.config.eval_metric}"] = validation_metrics[self.config.eval_metric]
+            wandb.run.summary["best_validation_loss"] = validation_loss.avg
             return True
         return False
 
-    def fine_tune_model(self, training_dataloader: DataLoader, eval_dataloader: DataLoader) -> None:
-        self._run_optimization_loop(training_dataloader, eval_dataloader)
+    def fine_tune_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
+        self._run_optimization_loop(training_dataloader, validation_dataloader)
         wandb.unwatch()
         wandb.finish()

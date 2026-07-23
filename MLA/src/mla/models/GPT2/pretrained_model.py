@@ -1,4 +1,3 @@
-
 import math
 
 import torch
@@ -10,6 +9,7 @@ from transformers.utils.output_capturing import OutputRecorder
 from mla.models.GPT2.attention import GPT2Attention
 from mla.models.GPT2.block import GPT2Block
 from mla.models.GPT2.config import GPT2Config
+from mla.models.GPT2.mlp import GPT2MLP
 
 
 class GPT2PreTrainedModel(PreTrainedModel):
@@ -31,6 +31,15 @@ class GPT2PreTrainedModel(PreTrainedModel):
     # No longer used as we directly use our masks instead
     _keys_to_ignore_on_load_unexpected = ["attn.bias", "crossattention.bias"]
 
+    @classmethod
+    def is_custom_code(cls) -> bool:
+        """
+        This fork implements a transformers-style model and initializes weights
+        through `transformers.initialization`, so the "remote/custom code" weight-init
+        skip (which guards against un-guarded in-place init) does not apply.
+        """
+        return False
+
     @torch.no_grad()
     def _init_weights(self, module):
         """Initialize the weights."""
@@ -46,8 +55,10 @@ class GPT2PreTrainedModel(PreTrainedModel):
         #   >   -- GPT-2 :: https://openai.com/blog/better-language-models/
         #
         # Reference (Megatron-LM): https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/model/gpt_model.py
-        if isinstance(module, PreTrainedModel):
-            for name, p in module.named_parameters():
-                if name == "c_proj.weight":
-                    # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
-                    init.normal_(p, mean=0.0, std=self.config.initializer_range / math.sqrt(2 * self.config.n_layer))
+        if isinstance(module, (GPT2Attention, GPT2MLP)):
+            # Special Scaled Initialization --> There are 2 output projections (attention and MLP) per Transformer Block
+            std = self.config.initializer_range / math.sqrt(2 * self.config.n_layer)
+            if hasattr(module, "c_proj"):
+                init.normal_(module.c_proj.weight, mean=0.0, std=std)
+            elif hasattr(module, "output_up_proj"):
+                init.normal_(module.output_up_proj.weight, mean=0.0, std=std)

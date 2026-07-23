@@ -95,9 +95,14 @@ class AttentionHeadHook:
                 self.handles.append(handle)
         elif hasattr(self.model, "transformer"):
             for i, h in enumerate(self.model.transformer.h):
-                handle = h.attn.c_proj.register_forward_pre_hook(
-                    self.gpt2_hook_fn(i)
-                )
+                if hasattr(h.attn, "c_proj"):
+                    handle = h.attn.c_proj.register_forward_pre_hook(
+                        self.gpt2_hook_fn(i)
+                    )
+                elif hasattr(h.attn, "output_down_proj"):
+                    handle = h.attn.output_down_proj.register_forward_pre_hook(
+                        self.gpt2_hook_fn(i)
+                    )
                 self.handles.append(handle)
 
     def remove(self) -> None:
@@ -108,7 +113,7 @@ class AttentionHeadHook:
         self.handles.clear()
 
 
-def collect_attention_head_activations(pretrainer: BaseModelTraining, val_loader: DataLoader) -> list[torch.Tensor]:
+def collect_attention_head_activations(pretrainer: BaseModelTraining, validation_dataloader: DataLoader) -> list[torch.Tensor]:
     """
     Collects per-layer attention head activations by running a forward pass with registered hooks.
 
@@ -117,8 +122,7 @@ def collect_attention_head_activations(pretrainer: BaseModelTraining, val_loader
 
     Args:
         pretrainer (BaseModelTraining): Trainer instance used to run evaluation.
-        model (nn.Module): The model to collect activations from.
-        val_loader (DataLoader): Validation dataloader used to drive the forward pass.
+        validation_dataloader (DataLoader): Validation dataloader used to drive the forward pass.
 
     Returns:
         list[torch.Tensor]: Per-layer head activations, where each element has
@@ -131,7 +135,7 @@ def collect_attention_head_activations(pretrainer: BaseModelTraining, val_loader
     collector.register()
 
     # Output the loss/metric values
-    _, _ = pretrainer.eval_model(eval_dataloader=val_loader, training_eval=False)
+    _, _ = pretrainer.eval_model(validation_dataloader=validation_dataloader, training_eval=False)
 
     # Extract the attention heads
     activations_list = list(collector.activations.values())
