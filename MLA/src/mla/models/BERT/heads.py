@@ -1,174 +1,220 @@
-from collections.abc import Callable
+import logging
+from typing import Self, Unpack
 
 import torch
-import torch.nn.functional as F
-from torch import nn
-from transformers.modeling_outputs import SequenceClassifierOutput
 
+from torch import nn
+from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from transformers.activations import ACT2FN
+from transformers.modeling_outputs import SequenceClassifierOutput
+from transformers.utils import TransformersKwargs
+from transformers.utils.generic import can_return_tuple
+
+from mla.models.BERT.config import BertConfig
 from mla.models.BERT.dataclasses import MaskedLMOutput
 from mla.models.BERT.model import BertModel
 from mla.models.BERT.pretrained_model import BertPreTrainedModel
 
+logger = logging.getLogger(__name__)
 
-class BertModelForMLM(BertPreTrainedModel):
-    """
-    BERT model with a language modeling head on top for Masked Language Modeling (MLM).
 
-    The base `BertModel` acts strictly as a feature extractor, outputting continuous multi-dimensional
-    vectors. This class attaches a linear prediction head (`lm_head`) to map those feature vectors
-    back into the vocabulary space, calculating the prediction probability for every token position.
-    It automatically handles cross-entropy loss extraction if target labels are supplied.
+class BertPredictionHeadTransform(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        if isinstance(config.hidden_act, str):
+            self.transform_act_fn = ACT2FN[config.hidden_act]
+        else:
+            self.transform_act_fn = config.hidden_act
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
-    Attributes:
-        bert (BertModel): The structural backbone encoder model.
-        lm_head (nn.Linear): The classification projection layer mapping from hidden size dimensions
-            to the vocabulary length.
-        bias (nn.Parameter): A standalone trainable tensor bound to the language modeling head's bias.
-    """
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.transform_act_fn(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
+
+
+class BertLMPredictionHead(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.transform = BertPredictionHeadTransform(config)
+
+        # The output weights are the same as the input embeddings, but there is
+        # an output-only bias for each token.
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size, bias=True)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+
+    def forward(self, hidden_states):
+        hidden_states = self.transform(hidden_states)
+        hidden_states = self.decoder(hidden_states)
+        return hidden_states
+
+
+class BertOnlyMLMHead(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.predictions = BertLMPredictionHead(config)
+
+    def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
+        prediction_scores = self.predictions(sequence_output)
+        return prediction_scores
+
+
+class BertForMaskedLM(BertPreTrainedModel):
+    _tied_weights_keys = {
+        "cls.predictions.decoder.weight": "bert.embeddings.word_embeddings.weight",
+        "cls.predictions.decoder.bias": "cls.predictions.bias",
+    }
+
     def __init__(self, config):
         super().__init__(config)
 
-        self.bert = BertModel(config)
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
-        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
-        self.lm_head.bias = self.bias
+        if config.is_decoder:
+            logger.warning(
+                "If you want to use `BertForMaskedLM` make sure `config.is_decoder=False` for "
+                "bi-directional self-attention."
+            )
+
+        self.bert = BertModel(config, add_pooling_layer=False)
+        self.cls = BertOnlyMLMHead(config)
+
+        # Initialize weights and apply final processing
         self.post_init()
 
-    def forward(self, input_ids=None, attention_mask=None, labels=None, **kwargs):
-        """
-        Executes the forward pass for masked language model training or prediction.
+    def get_output_embeddings(self):
+        return self.cls.predictions.decoder
 
-        Args:
-            input_ids (torch.Tensor, optional): Indices of input sequence tokens in the vocabulary.
-                Shape: `(batch_size, sequence_length)`.
-            attention_mask (torch.Tensor, optional): Mask preventing attention over padding tokens.
-                Shape: `(batch_size, sequence_length)`.
-            labels (torch.Tensor, optional): Ground-truth target token indices for calculating
-                the masked language modeling loss. Position values corresponding to unmasked tokens
-                should be flagged with `-100` to be ignored. Shape: `(batch_size, sequence_length)`.
+    def set_output_embeddings(self, new_embeddings):
+        self.cls.predictions.decoder = new_embeddings
+        self.cls.predictions.bias = new_embeddings.bias
 
-        Returns:
-            MaskedLMOutput: A structured dataclass object containing the optional training loss value,
-                unnormalized prediction logits across the entire vocabulary, and downstream tracking states.
+    @can_return_tuple
+    def forward(
+        self,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        token_type_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        encoder_hidden_states: torch.Tensor | None = None,
+        encoder_attention_mask: torch.Tensor | None = None,
+        labels: torch.Tensor | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> tuple[torch.Tensor] | MaskedLMOutput:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked), the
+            loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
         """
-        # For a given set of input_ids/attention_masks return the bert last hidden state
         outputs = self.bert(
-            input_ids=input_ids,
+            input_ids,
             attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            return_dict=True,
             **kwargs,
         )
 
-        # Convert the output to logits (prob for each word in the vocab)
-        # Shape transition: [batch_size, seq_len, hidden_size] -> [batch_size, seq_len, vocab_size]
-        logits = self.lm_head(outputs.last_hidden_state)
+        sequence_output = outputs[0]
+        prediction_scores = self.cls(sequence_output)
+
+        masked_lm_loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss()  # -100 index = padding token
+            masked_lm_loss = loss_fct(prediction_scores.view(-1, self.config.vocab_size), labels.view(-1))
+
+        return MaskedLMOutput(
+            loss=masked_lm_loss,
+            logits=prediction_scores,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+class BertForSequenceClassification(BertPreTrainedModel):
+    def __init__(self, config):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.config = config
+
+        self.bert = BertModel(config)
+        classifier_dropout = (
+            config.classifier_dropout if config.classifier_dropout is not None else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    @classmethod
+    def from_pretrained_lm(cls, lm_model: BertForMaskedLM, config: BertConfig) -> Self:
+        clf = cls(config)
+        clf.bert.embeddings.load_state_dict(lm_model.bert.embeddings.state_dict())
+        clf.bert.encoder.load_state_dict(lm_model.bert.encoder.state_dict())
+        return clf
+
+    @can_return_tuple
+    def forward(
+        self,
+        input_ids: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        token_type_ids: torch.Tensor | None = None,
+        position_ids: torch.Tensor | None = None,
+        inputs_embeds: torch.Tensor | None = None,
+        labels: torch.Tensor | None = None,
+        **kwargs: Unpack[TransformersKwargs],
+    ) -> tuple[torch.Tensor] | SequenceClassifierOutput:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
+            config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
+            `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
+        """
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            inputs_embeds=inputs_embeds,
+            return_dict=True,
+            **kwargs,
+        )
+        pooled_output = outputs[1]
+        pooled_output = self.dropout(pooled_output)
+        logits = self.classifier(pooled_output)
 
         loss = None
         if labels is not None:
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
 
-            # Calculate the cross entropy loss between the true labels and predicted logits
-            # PyTorch's cross_entropy requires a 2D matrix of predictions (N, classes) and a 1D vector of targets (N).
-            # We flatten both matrices using .view(-1) to create a single long stream of individual tokens.
-            loss = F.cross_entropy(
-                logits.view(-1, logits.size(-1)),
-                labels.view(-1),
-                ignore_index=-100,
-            )
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                if self.num_labels == 1:
+                    loss = loss_fct(logits.squeeze(), labels.squeeze())
+                else:
+                    loss = loss_fct(logits, labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
 
-        return MaskedLMOutput(
+        return SequenceClassifierOutput(
             loss=loss,
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-
-class BERTModelForClassification(nn.Module):
-    """
-    A sequence classification wrapper sitting on top of a base BERT encoder.
-
-    Extracts the contextual representation of the pooler target ([CLS] token)
-    from the final hidden state and projects it through a regularized dropout
-    layer and linear classification head.
-    """
-    def __init__(self, bert_model: Callable, config):
-        """
-        Initializes the classification wrapper with an encoder and head layers.
-
-        Args:
-            bert_model (nn.Module): The underlying pre-trained or raw base BERT
-                encoder model.
-            config (Callable): Configuration dataclass containing
-                structural properties (`hidden_size`, `dropout_rate`, `num_labels`).
-        """
-        super().__init__()
-        self.bert = bert_model
-        self.hidden_size = config.hidden_size
-        self.num_labels = config.num_labels
-
-        self.dropout = nn.Dropout(config.dropout_rate)
-        self.classifier = nn.Linear(self.hidden_size, config.num_labels)
-
-        self.loss_fn = nn.CrossEntropyLoss()
-
-        # Initialize weights for the new head
-        self._init_weights(self.classifier)
-
-    def _init_weights(self, module: nn.Module) -> None:
-        """
-        Applies standard BERT normal distribution initialization to a module.
-
-        Args:
-            module (nn.Module): The structural sub-component layer (typically a
-                nn.Linear layer) requiring weight calibration.
-        """
-        if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=0.02)
-            if module.bias is not None:
-                module.bias.data.zero_()
-
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        labels: torch.Tensor | None = None,
-        **kwargs
-    ):
-        """
-        Executes a sequence classification forward pass over the batch.
-
-        Args:
-            input_ids (torch.Tensor): Tensor of shape (batch_size, seq_len)
-                containing vocabulary token indices.
-            attention_mask (torch.Tensor): Tensor of shape (batch_size, seq_len)
-                containing attention masking bits (1 for data, 0 for padding).
-            labels (torch.Tensor, optional): Ground truth training target indices
-                for loss calculations. Defaults to None.
-            **kwargs: Additional keyword arguments passed down directly to the
-                underlying base BERT encoder.
-
-        Returns:
-            BERTClassifierOutput: A lightweight structural container holding:
-                - loss (torch.Tensor or None): Calculated Cross-Entropy scalar if
-                  labels are provided, otherwise None.
-                - logits (torch.Tensor): Raw, unnormalized prediction scores of
-                  shape (batch_size, num_labels).
-        """
-
-        # Forward pass through the Transformer layers
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            **kwargs,
-        )
-
-        # Extract the [CLS] token representation -> [batch_size, seq_len, 768]
-        cls_output = outputs.last_hidden_state[:, 0, :]
-
-        # Apply classification head
-        cls_output = self.dropout(cls_output)
-        logits = self.classifier(cls_output)
-
-        loss = None
-        if labels is not None:
-            loss = self.loss_fn(logits.view(-1, self.num_labels), labels.view(-1))
-
-        return SequenceClassifierOutput(loss=loss, logits=logits)

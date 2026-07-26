@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import torch
 from transformers.cache_utils import Cache
@@ -111,23 +111,20 @@ class MaskedLMOutput(ModelOutput):
 
 
 @dataclass
-class DataTrainingArguments:
+class BertForPreTrainingOutput(ModelOutput):
+    r"""
+    loss (*optional*, returned when `labels` is provided, `torch.FloatTensor` of shape `(1,)`):
+        Total loss as the sum of the masked language modeling loss and the next sequence prediction
+        (classification) loss.
+    prediction_logits (`torch.FloatTensor` of shape `(batch_size, sequence_length, config.vocab_size)`):
+        Prediction scores of the language modeling head (scores for each vocabulary token before SoftMax).
+    seq_relationship_logits (`torch.FloatTensor` of shape `(batch_size, 2)`):
+        Prediction scores of the next sequence prediction (classification) head (scores of True/False continuation
+        before SoftMax).
     """
-    Arguments pertaining to what data configuration profiles we are going to input
-    into our model architecture for downstream training and evaluation.
 
-    This configuration class interfaces with argument parsers to handle settings
-    like text source locations, variant sub-configurations, and hard spatial truncation
-    boundaries across data streams.
-
-    Attributes:
-        dataset_name (str, optional): The unique repository identification string of the dataset
-            hosted on the Hugging Face Hub (e.g., `"wikitext"`, `"imdb"`), or a local folder path.
-        dataset_config_name (str, optional): The designated subset or generation profile name of the
-            targeted dataset (e.g., `"wikitext-2-raw-v1"`).
-        max_seq_length (int, optional): The maximum token cutoff threshold enforced after tokenization.
-            Any sequence scaling past this value will be truncated.
-    """
-    dataset_name: str | None = field(default=None, metadata={"help": "The name of the dataset to use (via the datasets library)."})
-    dataset_config_name: str | None = field(default=None, metadata={"help": "The configuration name of the dataset to use (via the datasets library)."})
-    max_seq_length: int | None = field(default=None, metadata={"help": "The maximum total input sequence length after tokenization. Sequences longer than this will be truncated."})
+    loss: torch.FloatTensor | None = None
+    prediction_logits: torch.FloatTensor | None = None
+    seq_relationship_logits: torch.FloatTensor | None = None
+    hidden_states: tuple[torch.FloatTensor] | None = None
+    attentions: tuple[torch.FloatTensor] | None = None

@@ -13,7 +13,7 @@ from transformers import PreTrainedTokenizerBase
 from mla.config.paths import Paths
 from mla.model_training.model_training import ModelPreTraining
 from mla.models.BERT.config import BertConfig
-from mla.models.BERT.heads import BERTModelForClassification, BertModelForMLM
+from mla.models.BERT.heads import BertForMaskedLM, BertForSequenceClassification
 from mla.models.GPT2.config import GPT2Config
 from mla.models.GPT2.heads import GPT2ForSequenceClassification, GPT2LMHeadModel
 from mla.utils.attention_hooks import collect_attention_head_activations
@@ -50,14 +50,18 @@ class FineTuningStrategy(TrainingStrategy):
 
 class BERTPretrainingStrategy(TrainingStrategy):
     def build_model(self, config: DictConfig) -> nn.Module:
-        model_config = BertConfig.from_pretrained(
-            config.model_config_name,
+        model_config = BertConfig(
+            hidden_size=config.hidden_size,
+            num_hidden_layers=config.n_layer,
+            num_attention_heads=config.n_head,
+            intermediate_size=config.intermediate_size,
+            max_position_embeddings=config.max_position_embeddings,
             attention_mechanism=config.attention_mechanism,
             kv_compression_dim=config.kv_compression_dim,
             q_compression_dim=config.q_compression_dim,
             output_compression_dim=config.output_compression_dim,
         )
-        return BertModelForMLM(model_config)
+        return BertForMaskedLM(model_config)
 
     def metric_cls(self) -> type[MetricEvaluationProtocol]: return MetricEvaluation
 
@@ -100,6 +104,7 @@ class BERTPretrainingStrategy(TrainingStrategy):
 class GPT2PretrainingStrategy(TrainingStrategy):
     def build_model(self, config: DictConfig) -> nn.Module:
         model_config = GPT2Config(
+            hidden_size=config.hidden_size,
             n_layer=config.n_layer,
             n_head=config.n_head,
             n_embd=config.hidden_size,
@@ -154,8 +159,13 @@ class GPT2PretrainingStrategy(TrainingStrategy):
 
 class BERTFineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        bert_config = BertConfig.from_pretrained(
-            config.model_config_name,
+        bert_config = BertConfig(
+            hidden_size=config.hidden_size,
+            num_hidden_layers=config.n_layer,
+            num_attention_heads=config.n_head,
+            intermediate_size=config.intermediate_size,
+            max_position_embeddings=config.max_position_embeddings,
+            num_labels=config.num_labels,
             attention_mechanism=config.attention_mechanism,
             kv_compression_dim=config.kv_compression_dim,
             q_compression_dim=config.q_compression_dim,
@@ -164,13 +174,13 @@ class BERTFineTuningStrategy(FineTuningStrategy):
 
         # Load the pretrained BERT model
         bert_model = ModelPreTraining.load_model(
-            model_class=BertModelForMLM,
+            model_class=BertForMaskedLM,
             model_config=bert_config,
             checkpoint_path=paths.pretrained_model_path,
-        ).bert
+        )
 
         # Convert MLM BERT model to classification BERT
-        bert_classifier = BERTModelForClassification(bert_model=bert_model, config=config)
+        bert_classifier = BertForSequenceClassification.from_pretrained_lm(lm_model=bert_model, config=bert_config)
 
         # Compile the BERT classifier
         compiled_bert_classifier = torch.compile(bert_classifier)
@@ -190,10 +200,10 @@ class BERTFineTuningStrategy(FineTuningStrategy):
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "avg_finetune_validation_loss": f"{np.mean(results["loss"]):.4f} +/- {np.std(results["loss"]):.4f}",
-            "avg_finetune_accuracy": f"{np.mean(results["accuracy"]):.4f} +/- {np.std(results["accuracy"]):.4f}",
-            "avg_finetune_f1": f"{np.mean(results["f1"]):.4f} +/- {np.std(results["f1"]):.4f}",
-            "avg_finetune_mcc": f"{np.mean(results["mcc"]):.4f} +/- {np.std(results["mcc"]):.4f}",
+            "avg_finetune_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
+            "avg_finetune_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
+            "avg_finetune_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
+            "avg_finetune_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,
@@ -203,6 +213,7 @@ class BERTFineTuningStrategy(FineTuningStrategy):
 class GPT2FineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
         model_config = GPT2Config(
+            hidden_size=config.hidden_size,
             n_layer=config.n_layer,
             n_head=config.n_head,
             n_embd=config.hidden_size,
@@ -242,10 +253,10 @@ class GPT2FineTuningStrategy(FineTuningStrategy):
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "avg_finetune_validation_loss": f"{np.mean(results["loss"]):.4f} +/- {np.std(results["loss"]):.4f}",
-            "avg_finetune_accuracy": f"{np.mean(results["accuracy"]):.4f} +/- {np.std(results["accuracy"]):.4f}",
-            "avg_finetune_f1": f"{np.mean(results["f1"]):.4f} +/- {np.std(results["f1"]):.4f}",
-            "avg_finetune_mcc": f"{np.mean(results["mcc"]):.4f} +/- {np.std(results["mcc"]):.4f}",
+            "avg_finetune_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
+            "avg_finetune_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
+            "avg_finetune_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
+            "avg_finetune_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,
@@ -256,7 +267,7 @@ _PRETRAINING_STRATEGIES: dict[str, TrainingStrategy] = {
     "GPT2": GPT2PretrainingStrategy(),
 }
 
-_FINETUNING_STRATEGIES: dict[str, TrainingStrategy] = {
+_FINETUNING_STRATEGIES: dict[str, FineTuningStrategy] = {
     "BERT": BERTFineTuningStrategy(),
     "GPT2": GPT2FineTuningStrategy(),
 }

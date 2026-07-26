@@ -26,11 +26,8 @@ class BertEmbeddings(nn.Module):
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
-        self.position_embedding_type = getattr(config, "position_embedding_type", "absolute")
-
+        # position_ids (1, len position emb) is contiguous in memory and exported when serialized
         # Fixed Buffers: Pre-allocate templates for IDs to avoid redundant ops on every forward pass.
-        # These are persistent=False because they are generated from arange and don't need to be saved in weights.
-        # Automatically they are added to the correct device are included in the state dict and are excluded from the optimizer
         self.register_buffer("position_ids", torch.arange(config.max_position_embeddings).expand((1, -1)), persistent=False)
         self.register_buffer("token_type_ids", torch.zeros(self.position_ids.size(), dtype=torch.long), persistent=False)
 
@@ -58,33 +55,32 @@ class BertEmbeddings(nn.Module):
             input_shape = input_ids.size()
         else:
             input_shape = inputs_embeds.size()[:-1]
-        seq_length = input_shape[1]
 
-        # Generate position IDs if not provided, accounting for KV-cache offset
+        batch_size, seq_length = input_shape
+
         if position_ids is None:
             position_ids = self.position_ids[:, past_key_values_length : seq_length + past_key_values_length]
 
-        # Generate token type IDs (default to 0s) if not provided
+        # Setting the token_type_ids to the registered buffer in constructor where it is all zeros, which usually occurs
+        # when its auto-generated, registered buffer helps users when tracing the model without passing token_type_ids, solves
+        # issue #5664
         if token_type_ids is None:
             if hasattr(self, "token_type_ids"):
-                buffered_token_type_ids = self.token_type_ids[:, :seq_length]
-                buffered_token_type_ids_expanded = buffered_token_type_ids.expand(input_shape[0], seq_length)
-                token_type_ids = buffered_token_type_ids_expanded
+                # NOTE: We assume either pos ids to have bsz == 1 (broadcastable) or bsz == effective bsz (input_shape[0])
+                buffered_token_type_ids = self.token_type_ids.expand(position_ids.shape[0], -1)
+                buffered_token_type_ids = torch.gather(buffered_token_type_ids, dim=1, index=position_ids)
+                token_type_ids = buffered_token_type_ids.expand(batch_size, seq_length)
             else:
                 token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=self.position_ids.device)
 
-        # Retrieve and sum all embedding components
         if inputs_embeds is None:
             inputs_embeds = self.word_embeddings(input_ids)
         token_type_embeddings = self.token_type_embeddings(token_type_ids)
         embeddings = inputs_embeds + token_type_embeddings
 
-        if self.position_embedding_type == "absolute":
-            position_embeddings = self.position_embeddings(position_ids)
-            embeddings += position_embeddings
+        position_embeddings = self.position_embeddings(position_ids)
+        embeddings = embeddings + position_embeddings
 
-        # Post-processing: Normalize to prevent any one embedding from dominating the signal
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
-
         return embeddings

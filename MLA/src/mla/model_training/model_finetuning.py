@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import hydra
+import torch
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import AdamW, Optimizer
@@ -137,6 +138,7 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
 
     for seed in config.seeds:
         logger.info("Starting fine-tuning seed=%d", seed)
+        torch._dynamo.reset()
         model = strategy.build_model(config, paths)
         logger.info("Loading checkpoint: %s", paths.pretrained_model_path)
         validation_loss, validation_metrics = model_fine_tuning(

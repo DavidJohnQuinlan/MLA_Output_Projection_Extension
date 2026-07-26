@@ -1,8 +1,11 @@
-from torch import nn
+import torch
+from transformers import initialization as init
 from transformers.modeling_utils import PreTrainedModel
-from transformers.models.bert.modeling_bert import BertLMPredictionHead  # , load_tf_weights_in_bert
 
+from mla.models.BERT.attention_mechanisms import BertCrossAttention, BertBaseAttention
 from mla.models.BERT.config import BertConfig
+from mla.models.BERT.embeddings import BertEmbeddings
+from mla.models.BERT.layer import BertLayer
 
 
 class BertPreTrainedModel(PreTrainedModel):
@@ -14,12 +17,20 @@ class BertPreTrainedModel(PreTrainedModel):
         config (BertConfig): Model configuration class with all hyperparameters.
         base_model_prefix (str): Prefix used for the base model attribute ("bert").
     """
-    config: BertConfig
-    # load_tf_weights = load_tf_weights_in_bert
+    config_class = BertConfig
     base_model_prefix = "bert"
     supports_gradient_checkpointing = True
+    _supports_flash_attn = True
     _supports_sdpa = True
+    _supports_flex_attn = True
+    _supports_attention_backend = True
+    _can_record_outputs = {
+        "hidden_states": BertLayer,
+        "attentions": BertBaseAttention,
+        "cross_attentions": BertCrossAttention,
+    }
 
+    @torch.no_grad()
     def _init_weights(self, module):
         """
         Initializes the weights of the provided module using BERT-specific defaults.
@@ -32,23 +43,10 @@ class BertPreTrainedModel(PreTrainedModel):
             module (nn.Module): The layer or sub-module to initialize (e.g., Linear,
                                 Embedding, or LayerNorm).
         """
-        if isinstance(module, nn.Linear):
-            # BERT paper specifies a normal distribution (mean=0.0, std=0.02)
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.bias is not None:
-                module.bias.data.zero_()
-
-        elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
-            if module.padding_idx is not None:
-                # Ensure the [PAD] token vector remains zeroed so it doesn't contribute signal
-                module.weight.data[module.padding_idx].zero_()
-
-        elif isinstance(module, nn.LayerNorm):
-            # LayerNorm is initialized to 'identity' (bias 0, weight 1)
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
-
-        elif isinstance(module, BertLMPredictionHead):
-            # Specifically zero out bias for the prediction head
-            module.bias.data.zero_()
+        from mla.models.BERT.heads import BertLMPredictionHead
+        super()._init_weights(module)
+        if isinstance(module, BertLMPredictionHead):
+            init.zeros_(module.bias)
+        elif isinstance(module, BertEmbeddings):
+            init.copy_(module.position_ids, torch.arange(module.position_ids.shape[-1]).expand((1, -1)))
+            init.zeros_(module.token_type_ids)

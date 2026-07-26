@@ -39,13 +39,14 @@ class PreTrainingConfig:
 
     # Model
     pretrained_model_name: str = MISSING
+    n_layer: int = MISSING
+    n_head: int = MISSING
     hidden_size: int = MISSING
+    intermediate_size: int = MISSING
     max_seq_length: int = MISSING
     max_position_embeddings: int = MISSING
     mixed_precision: str = MISSING
     loss_type: str | None = None
-    n_layer: int | None = None
-    n_head: int | None = None
 
     # Training
     batch_size: int = MISSING
@@ -94,14 +95,16 @@ class FineTuningConfig:
     # Model
     pretrained_model_name: str = MISSING
     fine_tuned_model_name: str = MISSING
-    dropout_rate: float = MISSING
+    n_layer: int = MISSING
+    n_head: int = MISSING
     hidden_size: int = MISSING
-    num_labels: int = MISSING
+    intermediate_size: int = MISSING
     max_seq_length: int = MISSING
     max_position_embeddings: int = MISSING
+    dropout_rate: float = MISSING
+    num_labels: int = MISSING
     mixed_precision: str = MISSING
-    n_layer: int | None = None
-    n_head: int | None = None
+    loss_type: str | None = None
 
     # Training
     batch_size: int = MISSING
