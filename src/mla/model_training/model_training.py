@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 import wandb.integration.torch.wandb_torch as wandb_torch
 from accelerate import Accelerator
+from accelerate.utils import GradScalerKwargs
 from omegaconf import DictConfig, OmegaConf
 from torch import nn
 from torch.optim import Optimizer
@@ -46,9 +47,11 @@ class BaseModelTraining(ABC):
         self.scheduler = None
 
         self.config = config
+        scaler_kwargs = GradScalerKwargs(init_scale=2**16) if self.config.mixed_precision == "fp16" else None
         self.accelerator = Accelerator(
             gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            mixed_precision=self.config.mixed_precision
+            mixed_precision=self.config.mixed_precision,
+            kwargs_handlers=[scaler_kwargs] if scaler_kwargs else []
         )
         self.optimizer = self._build_optimizer(model, optimizer)
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)
