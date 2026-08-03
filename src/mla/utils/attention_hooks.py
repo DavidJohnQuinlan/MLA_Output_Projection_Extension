@@ -57,6 +57,7 @@ class AttentionHeadHook:
                 .reshape(self.n_heads, -1, self.head_dim)
                 .detach()
                 .cpu()
+                .float()
             )
             self.activations[layer_idx] = heads
 
@@ -80,6 +81,7 @@ class AttentionHeadHook:
                 .reshape(self.n_heads, -1, self.head_dim)
                 .detach()
                 .cpu()
+                .float()
             )
             self.activations[layer_idx] = heads
 

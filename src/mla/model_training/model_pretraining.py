@@ -47,11 +47,10 @@ def model_pretraining(config: DictConfig) -> None:
     # Load and compile the model
     logger.info("Loading checkpoint config: %s", config.model_config_name)
     model = strategy.build_model(config)
-    compiled_model = torch.compile(model)
 
     # Initialize pretraining class
     pretrainer = ModelPreTraining(
-       model=compiled_model,
+       model=model,
        optimizer=AdamW,
        metric_fn=strategy.metric_cls(),
        config=config,
