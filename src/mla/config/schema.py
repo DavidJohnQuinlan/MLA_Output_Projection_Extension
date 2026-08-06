@@ -57,6 +57,7 @@ class PreTrainingConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
+    seeds: list[int] = MISSING
 
 
 @dataclass

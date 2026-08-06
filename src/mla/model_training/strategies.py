@@ -19,7 +19,7 @@ from mla.models.GPT2.heads import GPT2ForSequenceClassification, GPT2LMHeadModel
 from mla.utils.attention_hooks import collect_attention_head_activations
 from mla.utils.attention_utils import compute_model_cka
 from mla.utils.model_utils import CausalLMMetricEvaluation, ClassificationMetricEvaluation, MetricEvaluation, MetricEvaluationProtocol
-from mla.utils.utils import calculate_flop_metrics, measure_inference_speed
+from mla.utils.utils import calculate_flop_metrics, compute_training_compute, get_run_metadata, measure_inference_cost
 
 
 class TrainingStrategy(ABC):
@@ -77,18 +77,23 @@ class BERTPretrainingStrategy(TrainingStrategy):
         Build a results summary dictionary for a pretraining run.
         """
         flops, macs, params = calculate_flop_metrics(model, config)
-        ms_per_sample = measure_inference_speed(pretrainer.model, tokenizer, config)
+        cost = measure_inference_cost(pretrainer.model, tokenizer, config, dtype=config.mixed_precision)
+        training_compute = compute_training_compute(config, flops)
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
+            **get_run_metadata(config, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "n_params": params,
-            "GFLOPS": flops,
-            "GMACS": macs,
-            "Inf (ms)": f"{ms_per_sample:.2f}",
+            "GFLOPS": f"{flops / 1e9:.3f}",
+            "GMACS": f"{macs / 1e9:.3f}",
+            "train_tokens": training_compute["train_tokens"],
+            "train_flops": f"{training_compute['train_flops']:.3e}",
+            "Inf (ms)": f"{cost['median_ms']:.2f}",
+            "peak_mem_mb": f"{cost['peak_mem_mb']:.1f}" if cost['peak_mem_mb'] is not None else "n/a",
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
@@ -132,23 +137,28 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         Build a results summary dictionary for a pretraining run.
         """
         flops, macs, params = calculate_flop_metrics(model, config)
-        ms_per_sample = measure_inference_speed(pretrainer.model, tokenizer, config)
+        cost = measure_inference_cost(pretrainer.model, tokenizer, config, dtype=config.mixed_precision)
+        training_compute = compute_training_compute(config, flops)
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
+            **get_run_metadata(config, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "n_params": params,
-            "GFLOPS": flops,
-            "GMACS": macs,
-            "Inf (ms)": f"{ms_per_sample:.2f}",
+            "GFLOPS": f"{flops / 1e9:.3f}",
+            "GMACS": f"{macs / 1e9:.3f}",
+            "train_tokens": training_compute["train_tokens"],
+            "train_flops": f"{training_compute['train_flops']:.3e}",
+            "Inf (ms)": f"{cost['median_ms']:.2f}",
+            "peak_mem_mb": f"{cost['peak_mem_mb']:.1f}" if cost['peak_mem_mb'] is not None else "n/a",
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
             "pre_training_validation_loss": f"{pretrainer.best_validation_loss:.4f}",
-            "pre_training_validation_perplexity": f"{math.exp(pretrainer.best_validation_loss):.4f}",
+            "pre_training_validation_perplexity": f"{math.exp(min(pretrainer.best_validation_loss, 20)):.4f}",
             "pre_training_next_token_accuracy": f"{pretrainer.best_validation_metrics['accuracy']:.4f}",
             "pre_training_cka": f"{avg_cka:.4f}",
             "max_steps": config.max_steps,
@@ -193,6 +203,7 @@ class BERTFineTuningStrategy(FineTuningStrategy):
         Build a results summary dictionary for a finetuning run.
         """
         return {
+            **get_run_metadata(config,  wandb_id=results.get("seed_to_wandb")),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,
@@ -246,6 +257,7 @@ class GPT2FineTuningStrategy(FineTuningStrategy):
         Build a results summary dictionary for a finetuning run.
         """
         return {
+            **get_run_metadata(config,  wandb_id=results.get("seed_to_wandb")),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,

@@ -3,6 +3,7 @@ from pathlib import Path
 
 import hydra
 import torch
+from dataclasses import dataclass
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import AdamW, Optimizer
@@ -19,6 +20,15 @@ from mla.utils.utils import append_to_results_csv, configure_logging, print_outp
 logger = logging.getLogger(__name__)
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments")
+
+
+@dataclass
+class FineTuneRun:
+    """Validation result + provenance for a single fine-tuning run (one seed)."""
+    seed: int
+    loss: LossMeter
+    metrics: dict
+    wandb_id: str | None
 
 
 def prepare_fine_tune_data(config: DictConfig, paths: Paths) -> tuple[DataLoader, DataLoader]:
@@ -51,7 +61,7 @@ def model_fine_tuning(
         config: DictConfig,
         paths: Paths,
         seed: int,
-    ) -> tuple[LossMeter, dict]:
+    ) -> FineTuneRun:
     """
     Runs a single fine-tuning experiment for a given seed and returns validation results.
 
@@ -76,7 +86,12 @@ def model_fine_tuning(
     # Output the loss/metric values
     validation_loss, validation_metrics = fine_tuner.eval_model(validation_dataloader=validation_dataloader, training_eval=False)
 
-    return validation_loss, validation_metrics
+    return FineTuneRun(
+        seed=seed,
+        loss=validation_loss,
+        metrics=validation_metrics,
+        wandb_id=fine_tuner.wandb_id,
+    )
 
 
 def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
@@ -99,7 +114,7 @@ def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
     logger.info("Train batches: %d  Val batches: %d", len(train_dataloader), len(validation_dataloader))
     model = strategy.build_model(config, paths)
     logger.info("Loading checkpoint: %s", paths.pretrained_model_path)
-    validation_loss, validation_metrics = model_fine_tuning(
+    run = model_fine_tuning(
         model=model,
         optimizer=AdamW,
         metric_fn=strategy.metric_cls(),
@@ -109,9 +124,9 @@ def run_model_fine_tuning(config: DictConfig) -> tuple[LossMeter, dict]:
         paths=paths,
         seed=config.seeds[0]
     )
-    logger.info("Seed %d — loss=%.4f  %s=%.4f", config.seeds[0], validation_loss.avg, config.eval_metric, validation_metrics[config.eval_metric])
+    logger.info("Seed %d — loss=%.4f  %s=%.4f", config.seeds[0], run.loss.avg, config.eval_metric, run.metrics[config.eval_metric])
 
-    return validation_loss, validation_metrics
+    return run.loss, run.metrics
 
 
 @hydra.main(version_base=None, config_path=config_path, config_name="GPT2/finetuning/RTE/tinygpt2_mha_rte")
@@ -134,14 +149,15 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     train_dataloader, validation_dataloader = prepare_fine_tune_data(config, paths)
     logger.info("Train batches: %d  Val batches: %d", len(train_dataloader), len(validation_dataloader))
 
-    all_run_results = {"loss": [], "accuracy": [], "f1": [], "mcc": []}
+    all_run_results = {"loss": [], "accuracy": [], "f1": [], "mcc": [], "wandb_ids": []}
 
+    runs: list[FineTuneRun] = []
     for seed in config.seeds:
         logger.info("Starting fine-tuning seed=%d", seed)
         torch._dynamo.reset()
         model = strategy.build_model(config, paths)
         logger.info("Loading checkpoint: %s", paths.pretrained_model_path)
-        validation_loss, validation_metrics = model_fine_tuning(
+        run = model_fine_tuning(
             model=model,
             optimizer=AdamW,
             metric_fn=strategy.metric_cls(),
@@ -151,16 +167,19 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
             paths=paths,
             seed=seed
         )
-        logger.info("Seed %d — loss=%.4f  %s=%.4f", seed, validation_loss.avg, config.eval_metric, validation_metrics[config.eval_metric])
+        logger.info("Seed %d — loss=%.4f  %s=%.4f", seed, run.loss.avg, config.eval_metric, run.metrics[config.eval_metric])
+        runs.append(run)
 
-        # Add results
-        all_run_results["loss"].append(validation_loss.avg)
-        all_run_results["accuracy"].append(validation_metrics["accuracy"])
-        all_run_results["f1"].append(validation_metrics["f1"])
-        all_run_results["mcc"].append(validation_metrics["mcc"])
+    aggregated = {
+        "loss":     [r.loss.avg for r in runs],
+        "accuracy": [r.metrics["accuracy"] for r in runs],
+        "f1":       [r.metrics["f1"] for r in runs],
+        "mcc":      [r.metrics["mcc"] for r in runs],
+        "seed_to_wandb": {r.seed: r.wandb_id for r in runs},
+    }
 
     # Save results to central CSV
-    results = strategy.build_results(all_run_results, config)
+    results = strategy.build_results(aggregated, config)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / "finetune_results.csv")
     print_output_table(title="Fine tuning Complete", results=results)
     logger.info("All seeds complete for %s", config.experiment_name)

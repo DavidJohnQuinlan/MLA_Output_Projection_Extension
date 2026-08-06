@@ -1,12 +1,11 @@
-from collections.abc import Callable
 from typing import Unpack
 
 import torch
 from torch import nn
-from transformers.cache_utils import Cache, EncoderDecoderCache
+from transformers.cache_utils import Cache
 from transformers.utils import TransformersKwargs
 
-from mla.models.BERT.attention_mechanisms import ALL_ATTENTION_FUNCTIONS, BertSelfAttention, BertSelfOutput, MultiHeadedLatentAttention, MultiHeadedLatentAttentionBertSelfOutput, eager_attention_forward
+from mla.models.BERT.attention_mechanisms import BertCrossAttention, BertSelfAttention, BertSelfOutput, MultiHeadedLatentAttention, MultiHeadedLatentAttentionBertSelfOutput
 
 _ATTENTION_MECHANISM = {
     "MHA": BertSelfAttention,

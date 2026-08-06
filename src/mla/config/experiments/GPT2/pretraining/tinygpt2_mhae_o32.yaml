@@ -49,3 +49,4 @@ gradient_accumulation_steps: 32
 train_eval_steps: 10
 eval_steps: 500
 eval_metric: loss
+seeds: [42]

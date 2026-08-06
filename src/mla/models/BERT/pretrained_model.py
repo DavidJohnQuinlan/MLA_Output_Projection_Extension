@@ -2,7 +2,7 @@ import torch
 from transformers import initialization as init
 from transformers.modeling_utils import PreTrainedModel
 
-from mla.models.BERT.attention_mechanisms import BertCrossAttention, BertBaseAttention
+from mla.models.BERT.attention_mechanisms import BertBaseAttention, BertCrossAttention
 from mla.models.BERT.config import BertConfig
 from mla.models.BERT.embeddings import BertEmbeddings
 from mla.models.BERT.layer import BertLayer

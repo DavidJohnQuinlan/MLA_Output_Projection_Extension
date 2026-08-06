@@ -37,15 +37,16 @@ pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MHA
 n_layer: 6
 n_head: 4
 hidden_size: 312
-max_seq_length: 128
-max_position_embeddings: 128
+max_seq_length: 512
+max_position_embeddings: 512
 mixed_precision: "fp16"
 loss_type: ForCausalLM
 
 # Training
 batch_size: 8
-eval_batch_size: 64
-gradient_accumulation_steps: 32
+eval_batch_size: 16
+gradient_accumulation_steps: 16
 train_eval_steps: 10
 eval_steps: 500
 eval_metric: loss
+seeds: [42]

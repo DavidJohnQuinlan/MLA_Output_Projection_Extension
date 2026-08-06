@@ -1,3 +1,4 @@
+import math
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -231,7 +232,8 @@ class BaseModelTraining(ABC):
 
                     # Logging
                     self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode="train")
-                    training_loss.update(loss.item(), n=batch["input_ids"].size(0))
+                    n_tokens = (batch["labels"] != -100).sum().item()
+                    training_loss.update(loss.item(), n=n_tokens)
                     self._update_progress_bars(mode="train", loss_value=training_loss.avg)
 
                     # Update the gradients
@@ -314,7 +316,8 @@ class BaseModelTraining(ABC):
 
                 # Calculate and update validation loss and metrics
                 loss = outputs.loss.detach().cpu().item()
-                validation_loss.update(loss, n=batch["input_ids"].size(0))
+                n_tokens = (batch["labels"] != -100).sum().item()
+                validation_loss.update(loss, n=n_tokens)
                 self._update_progress_bars(mode=mode, loss_value=validation_loss.avg)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
                 validation_metrics = self.metric_fn.compute()
@@ -403,8 +406,8 @@ class ModelPreTraining(BaseModelTraining):
             tags=[config.attention_mechanism],
             mode=self.wandb_mode,
         )
+        self.wandb_id = wandb.run.id if wandb.run is not None else None
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        self.history = {"train_loss": [], "validation_loss": [], "train_accuracy": [], "validation_accuracy": []}
 
     def _log_metrics(
         self,
@@ -416,7 +419,7 @@ class ModelPreTraining(BaseModelTraining):
         total_norm: float | None = None
     ) -> None:
         """
-        Log the training or validation loss and metrics to wandb UI and to local dictionary.
+        Log the training or validation loss and metrics to wandb UI.
 
         Args:
             mode (str): The target bar to update; must be "train" or "validation".
@@ -426,12 +429,10 @@ class ModelPreTraining(BaseModelTraining):
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
         """
-        self.history[f"{mode}_loss"].append(loss.avg)
-        self.history[f"{mode}_accuracy"].append(metrics["accuracy"])
-
         log_dict = {}
         if mode == "train":
             log_dict["train/loss"] = loss.avg
+            log_dict["train/perplexity"] = math.exp(min(loss.avg, 20))
             log_dict["train/accuracy"] = metrics["accuracy"]
             log_dict["train/learning_rate"] = self.scheduler.get_last_lr()[0]
             log_dict["train/steps_per_sec"] = steps_per_sec
@@ -440,6 +441,7 @@ class ModelPreTraining(BaseModelTraining):
 
         elif mode == "validation":
             log_dict["validation/loss"] = loss.avg
+            log_dict["validation/perplexity"] = math.exp(min(loss.avg, 20))
             log_dict["validation/accuracy"] = metrics["accuracy"]
             log_dict["validation/steps_per_sec"] = steps_per_sec
             log_dict["validation/samples_per_sec"] = samples_per_sec
@@ -489,26 +491,13 @@ class ModelFineTuning(BaseModelTraining):
             tags=[config.attention_mechanism, config.dataset_config_name],
             mode=self.wandb_mode,
         )
+        self.wandb_id = wandb.run.id if wandb.run is not None else None
         wandb.define_metric("validation/accuracy", summary="max")
         wandb.define_metric("validation/loss", summary="min")
         wandb.define_metric("validation/f1", summary="max")
         wandb.define_metric("validation/mcc", summary="max")
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
         self.best_metric = 0.0
-        self.history = {
-            "train_loss": [],
-            "train_accuracy": [],
-            "train_recall": [],
-            "train_precision": [],
-            "train_f1": [],
-            "train_mcc": [],
-            "validation_loss": [],
-            "validation_accuracy": [],
-            "validation_recall": [],
-            "validation_precision": [],
-            "validation_f1": [],
-            "validation_mcc": [],
-        }
 
     def _log_metrics(
         self,
@@ -520,7 +509,7 @@ class ModelFineTuning(BaseModelTraining):
         total_norm: float | None = None
     ) -> None:
         """
-        Log the training or validation loss and metrics to wandb UI and to local dictionary.
+        Log the training or validation loss and metrics to wandb UI.
 
         Args:
             mode (str): The target bar to update; must be "train" or "validation".
@@ -530,14 +519,6 @@ class ModelFineTuning(BaseModelTraining):
             samples_per_sec (float): Number of samples processed per second.
             total_norm (float, optional): The global norm of the gradients. Defaults to None.
         """
-
-        self.history[f"{mode}_loss"].append(loss.avg)
-        self.history[f"{mode}_accuracy"].append(metrics["accuracy"])
-        self.history[f"{mode}_recall"].append(metrics["recall"])
-        self.history[f"{mode}_precision"].append(metrics["precision"])
-        self.history[f"{mode}_f1"].append(metrics["f1"])
-        self.history[f"{mode}_mcc"].append(metrics["mcc"])
-
         log_dict = {}
         if mode == "train":
             log_dict["train/loss"] = loss.avg

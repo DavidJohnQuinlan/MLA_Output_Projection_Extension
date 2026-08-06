@@ -174,7 +174,7 @@ class MultiHeadedLatentAttention(BertBaseAttention):
 
     def __init__(self, config, is_causal=False, layer_idx=None):
         super().__init__(config, is_causal=is_causal, layer_idx=layer_idx)
-        
+
         # Define the layers associated with low rank joint compression of keys and values
         self.kv_down_projection = nn.Linear(config.hidden_size, config.kv_compression_dim)
         self.k_up_projection = nn.Linear(config.kv_compression_dim, config.hidden_size)
