@@ -30,46 +30,45 @@ def model_pretraining(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-
-    # TODO: WILL NEED TO CHANGE WHEN RUNNING MANY PRETRAINING RUNS
-    seed = config.seeds[0]
-    set_all_seeds(seed)
     configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
-    paths = get_pretrain_paths(root_dir, config, seed)
     strategy = _PRETRAINING_STRATEGIES[config.base_model]
-
-    # Define the tokenizer
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
 
-    # Import the datasets and prepare dataloaders
-    dataset = import_and_prepare_data(tokenizer, config, paths)
-    train_loader, validation_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
-    logger.info("Train batches: %d  Val batches: %d", len(train_loader), len(validation_loader))
+    data_paths = get_pretrain_paths(root_dir, config)
+    dataset = import_and_prepare_data(tokenizer, config, data_paths)
+    results_csv_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv"
 
-    # Load and compile the model
-    logger.info("Loading checkpoint config: %s", config.model_config_name)
-    model = strategy.build_model(config)
+    # Independent pretraining run per seed
+    for seed in config.seeds:
+        paths = get_pretrain_paths(root_dir, config, seed)
+        if paths.model_file_path.exists():
+            logger.info("Skipping seed=%d — checkpoint exists: %s", seed, paths.model_file_path)
+            continue
+        set_all_seeds(seed)
+        train_loader, validation_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
+        logger.info(f"(Seed={seed}): Train batches: {len(train_loader)}  Val batches: {len(validation_loader)}")
 
-    # Initialize pretraining class
-    pretrainer = ModelPreTraining(
-       model=model,
-       optimizer=AdamW,
-       metric_fn=strategy.metric_cls(),
-       config=config,
-       paths=paths,
-    )
+        logger.info(f"(Seed={seed}): Loading checkpoint config: {config.model_config_name}")
+        model = strategy.build_model(config)
 
-    # Start training
-    logger.info("Starting pretraining — attention=%s  lr=%s  max_steps=%d",
-                config.attention_mechanism, config.learning_rate, config.max_steps)
-    pretrainer.train_model(training_dataloader=train_loader, validation_dataloader=validation_loader)
+        pretrainer = ModelPreTraining(
+            model=model,
+            optimizer=AdamW,
+            metric_fn=strategy.metric_cls(),
+            config=config,
+            paths=paths,
+            seed=seed,
+        )
 
-    # Save results to central CSV
-    results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config, seed)
-    append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
-    print_output_table(title="Pretraining Complete", results=results)
-    logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_validation_loss)
+        logger.info(f"(Seed={seed}): Starting pretraining — attention={config.attention_mechanism} lr={config.learning_rate} max_steps={config.max_steps}")
+        pretrainer.train_model(training_dataloader=train_loader, validation_dataloader=validation_loader)
+
+        # Save results to central CSV
+        results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config, seed)
+        append_to_results_csv(results, results_csv_path)
+        print_output_table(title="Pretraining Complete", results=results)
+        logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretrainer.best_validation_loss:4f}")
 
 
 if __name__ == "__main__":

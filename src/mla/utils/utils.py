@@ -10,13 +10,14 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
 from calflops import calculate_flops
 from omegaconf import DictConfig
 from tabulate import tabulate
 from torch import nn
 from transformers import PreTrainedTokenizerBase
+
+import wandb
 
 _DTYPES = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
 

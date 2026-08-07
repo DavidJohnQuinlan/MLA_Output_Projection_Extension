@@ -42,7 +42,7 @@ def build_model_name(config: DictConfig, seed: int | None = None) -> str:
     return "_".join(str(p) for p in parts)
 
 
-def get_pretrain_paths(root_dir: Path, config: DictConfig, seed: int) -> Paths:
+def get_pretrain_paths(root_dir: Path, config: DictConfig, seed: int | None = None) -> Paths:
     """
     Builds and returns paths for a pretraining experiment.
 

@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
-from mla.config.paths import Paths
+from mla.config.paths import Paths, build_model_name
 from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
 from mla.utils.utils import compute_compression_ratio, get_device, safe_hook_variable_gradient_stats, setup_wandb
 
@@ -391,6 +391,7 @@ class ModelPreTraining(BaseModelTraining):
         metric_fn: type[MetricEvaluationProtocol],
         config: DictConfig,
         paths: Paths,
+        seed: int,
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
         self.model = torch.compile(self.model)
@@ -400,7 +401,7 @@ class ModelPreTraining(BaseModelTraining):
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
-            name=self.config.pretrained_model_name,
+            name=self.model_file_path.stem,
             job_type=self.config.job_type,
             config=wandb_cfg,
             tags=[config.attention_mechanism],
