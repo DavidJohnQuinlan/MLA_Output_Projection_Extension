@@ -1,9 +1,9 @@
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import hydra
 import torch
-from dataclasses import dataclass
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import AdamW, Optimizer
@@ -148,8 +148,6 @@ def run_multiple_fine_tunings(config: DictConfig) -> None:
     # Prepare the data and model
     train_dataloader, validation_dataloader = prepare_fine_tune_data(config, paths)
     logger.info("Train batches: %d  Val batches: %d", len(train_dataloader), len(validation_dataloader))
-
-    all_run_results = {"loss": [], "accuracy": [], "f1": [], "mcc": [], "wandb_ids": []}
 
     runs: list[FineTuneRun] = []
     for seed in config.seeds:

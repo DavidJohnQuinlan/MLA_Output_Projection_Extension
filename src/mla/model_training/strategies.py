@@ -36,7 +36,8 @@ class TrainingStrategy(ABC):
         model: nn.Module,
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
-        config: DictConfig
+        config: DictConfig,
+        seed: int
         ) -> dict: ...
 
 
@@ -71,7 +72,8 @@ class BERTPretrainingStrategy(TrainingStrategy):
         model: nn.Module,
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
-        config: DictConfig
+        config: DictConfig,
+        seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -82,7 +84,7 @@ class BERTPretrainingStrategy(TrainingStrategy):
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
-            **get_run_metadata(config, pretrainer.wandb_id),
+            **get_run_metadata(config, seed, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,
@@ -131,7 +133,8 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         model: nn.Module,
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
-        config: DictConfig
+        config: DictConfig,
+        seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -142,7 +145,7 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
-            **get_run_metadata(config, pretrainer.wandb_id),
+            **get_run_metadata(config, seed, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
             "model_name": config.pretrained_model_name,
             "attention_mechanism": config.attention_mechanism,

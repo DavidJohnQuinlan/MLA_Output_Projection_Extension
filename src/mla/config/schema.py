@@ -21,7 +21,10 @@ class PreTrainingConfig:
 
     # Dataset
     dataset_name: str = MISSING
-    dataset_config_name: str = MISSING
+    dataset_config_name: str | None = ""
+    max_load_pct: int | None = None
+    train_token_budget: int | None = None
+    val_token_budget: int | None = None
     drop_last: bool = MISSING
     sentence_keys: list = MISSING
     task_type: str = MISSING
@@ -77,7 +80,7 @@ class FineTuningConfig:
 
     # Dataset
     dataset_name: str = MISSING
-    dataset_config_name: str = MISSING
+    dataset_config_name: str | None = ""
     drop_last: bool = MISSING
     sentence_keys: list = MISSING
     task_type: str = MISSING

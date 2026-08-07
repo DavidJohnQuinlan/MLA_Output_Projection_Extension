@@ -30,10 +30,13 @@ def model_pretraining(config: DictConfig) -> None:
     Args:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
-    set_all_seeds(config.seeds[0])
+
+    # TODO: WILL NEED TO CHANGE WHEN RUNNING MANY PRETRAINING RUNS
+    seed = config.seeds[0]
+    set_all_seeds(seed)
     configure_logging()
     root_dir = Path(hydra.utils.get_original_cwd())
-    paths = get_pretrain_paths(root_dir, config)
+    paths = get_pretrain_paths(root_dir, config, seed)
     strategy = _PRETRAINING_STRATEGIES[config.base_model]
 
     # Define the tokenizer
@@ -63,7 +66,7 @@ def model_pretraining(config: DictConfig) -> None:
     pretrainer.train_model(training_dataloader=train_loader, validation_dataloader=validation_loader)
 
     # Save results to central CSV
-    results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config)
+    results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config, seed)
     append_to_results_csv(results, root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv")
     print_output_table(title="Pretraining Complete", results=results)
     logger.info("Pretraining complete — best_loss=%.4f", pretrainer.best_validation_loss)

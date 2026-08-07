@@ -10,14 +10,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
 from calflops import calculate_flops
 from omegaconf import DictConfig
 from tabulate import tabulate
 from torch import nn
 from transformers import PreTrainedTokenizerBase
-
-import wandb
 
 _DTYPES = {"fp16": torch.float16, "bf16": torch.bfloat16, "fp32": torch.float32}
 
@@ -226,7 +225,7 @@ def measure_inference_cost(
     return {"median_ms": statistics.median(samples), "peak_mem_mb": peak_mem_mb}
 
 
-def get_run_metadata(config: DictConfig, wandb_id:  str | dict | None = None) -> dict:
+def get_run_metadata(config: DictConfig, seed: int, wandb_id: str | dict | None = None) -> dict:
     """Generate ID stamps per model training/finetuning. Specifically, we will use git state, seed, wandb id."""
     try:
         sha = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
@@ -234,10 +233,9 @@ def get_run_metadata(config: DictConfig, wandb_id:  str | dict | None = None) ->
         git = f"{sha[:10]}{'-dirty' if dirty else ''}"
     except Exception:
         git = "unknown"
-    seeds = getattr(config, "seeds", None)
     return {
         "git_sha": git,
-        "seeds": seeds,
+        "seed": seed,
         "wandb_id": wandb_id,
     }
 

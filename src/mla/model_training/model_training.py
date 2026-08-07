@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 import torch
+import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
 from accelerate import Accelerator
 from omegaconf import DictConfig, OmegaConf
@@ -13,7 +14,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
-import wandb
 from mla.config.paths import Paths
 from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
 from mla.utils.utils import compute_compression_ratio, get_device, safe_hook_variable_gradient_stats, setup_wandb
