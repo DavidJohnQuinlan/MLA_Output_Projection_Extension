@@ -1,10 +1,10 @@
+import json
 import math
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 import torch
-import wandb
 import wandb.integration.torch.wandb_torch as wandb_torch
 from accelerate import Accelerator
 from omegaconf import DictConfig, OmegaConf
@@ -14,9 +14,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
-from mla.config.paths import Paths, build_model_name
+import wandb
+from mla.config.paths import Paths
 from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
-from mla.utils.utils import compute_compression_ratio, get_device, safe_hook_variable_gradient_stats, setup_wandb
+from mla.utils.utils import compute_compression_ratio, get_device, get_run_metadata, safe_hook_variable_gradient_stats, setup_wandb
 
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
@@ -341,7 +342,8 @@ class BaseModelTraining(ABC):
 
     def save_model(self) -> None:
         """
-        Unwraps the model from the Accelerator environment and saves its state dict locally.
+        Unwraps the model from the Accelerator environment and saves its state dict locally. Additionally, creates
+        a metadata json file assocaited with the saved model.
         """
         # Ensure the directory to store the model locally exist
         self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -353,17 +355,32 @@ class BaseModelTraining(ABC):
         # Save the unwrapped models state dict locally
         self.accelerator.save(model_to_save.state_dict(), self.model_file_path)
 
+        # Generate metadata
+        metadata = {
+            "config": model_to_save.config.to_dict(),
+            "seed": self.seed,
+            **get_run_metadata(self.wandb_id)
+        }
+        self.model_file_path.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
+
+
     @classmethod
     def load_model(
         cls,
         model_class: type[torch.nn.Module],
-        model_config: PretrainedConfig,
-        checkpoint_path: str | Path,
+        checkpoint_path: Path,
+        config_class: type[PretrainedConfig],
+        config_overrides: dict | None = None,
     ) -> torch.nn.Module:
         """
-        Factory method to instantiate a model architecture and load its saved weights.
+        Instantiate a model from its checkpoint's own saved config, then load weights.
         """
         device = get_device()
+        metadata = json.loads(checkpoint_path.with_suffix(".json").read_text())
+        model_config = config_class.from_dict(metadata["config"])
+        for k, v in (config_overrides or {}).items():
+            setattr(model_config, k, v)
+
         model = model_class(model_config)
         state_dict = torch.load(checkpoint_path, weights_only=True, map_location=device)
         state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
@@ -394,6 +411,7 @@ class ModelPreTraining(BaseModelTraining):
         seed: int,
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
+        self.seed = seed
         self.model = torch.compile(self.model)
         self.wandb_mode = setup_wandb()
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
@@ -480,13 +498,14 @@ class ModelFineTuning(BaseModelTraining):
         seed: int,
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
+        self.seed = seed
         self.wandb_mode = setup_wandb()
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
         wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
-            name=f"{self.config.fine_tuned_model_name}__seed_{seed}",
+            name=self.model_file_path.stem,
             job_type=self.config.job_type,
             config=wandb_cfg,
             tags=[config.attention_mechanism, config.dataset_config_name],

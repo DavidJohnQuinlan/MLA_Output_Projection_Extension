@@ -9,8 +9,6 @@ from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 from transformers import DataCollatorForLanguageModeling, PreTrainedTokenizerBase
 
-from mla.config.paths import Paths
-
 DATA_CREATION_SEED = 42
 
 
@@ -156,7 +154,7 @@ def prepare_finetuning_datasets(dataset: DatasetDict) -> DatasetDict:
     return dataset.rename_column("label", "labels").remove_columns(["idx"])
 
 
-def get_processed_dataset(
+def import_and_prepare_data(
     tokenizer: PreTrainedTokenizerBase,
     config: DictConfig,
     tokenized_dataset_path: str | Path,
@@ -183,7 +181,7 @@ def get_processed_dataset(
     """
     config_label = config.dataset_config_name or "default"
     if Path.exists(tokenized_dataset_path):
-        print(f"Loading {config.dataset_name}/{config.dataset_config_name} dataset from: {tokenized_dataset_path}")
+        print(f"Loading {config.dataset_name}/{config_label} dataset from: {tokenized_dataset_path}")
         return load_from_disk(tokenized_dataset_path)
 
     print(f"Processed dataset not found. Building: {config.dataset_name}/{config_label}")
@@ -281,13 +279,6 @@ class CreateDataloaders:
         )
 
         return training_loader, validation_loader
-
-
-def import_and_prepare_data(tokenizer: PreTrainedTokenizerBase, config: DictConfig, paths: Paths) -> DatasetDict:
-    """
-    Import and tokenized dataset or load if already tokenized.
-    """
-    return get_processed_dataset(tokenizer, config, paths.tokenized_data_path)
 
 
 def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, collator_fn=None) -> tuple[DataLoader, DataLoader]:

@@ -224,7 +224,8 @@ class ClassificationMetricEvaluation:
         all_preds (list): Accumulated predicted class indices across all batches.
         all_labels (list): Accumulated ground-truth labels across all batches.
     """
-    def __init__(self):
+    def __init__(self, num_labels: int = 2):
+        self.num_labels = num_labels
         self.reset()
 
     def reset(self):
@@ -257,7 +258,7 @@ class ClassificationMetricEvaluation:
         if self.total == 0:
             return {"count": 0, "accuracy": 0.0, "recall": 0.0, "precision": 0.0, "f1": 0.0}
 
-        average = "binary" if len(set(self.all_labels)) == 2 else "weighted"
+        average = "binary" if self.num_labels == 2 else "weighted"
         accuracy = self.correct / self.total
         recall = recall_score(self.all_labels, self.all_preds, average=average, zero_division=0)
         precision = precision_score(self.all_labels, self.all_preds, average=average, zero_division=0)

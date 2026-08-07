@@ -226,7 +226,7 @@ def measure_inference_cost(
     return {"median_ms": statistics.median(samples), "peak_mem_mb": peak_mem_mb}
 
 
-def get_run_metadata(config: DictConfig, seed: int, wandb_id: str | dict | None = None) -> dict:
+def get_run_metadata(wandb_id: str | dict | None = None) -> dict:
     """Generate ID stamps per model training/finetuning. Specifically, we will use git state, seed, wandb id."""
     try:
         sha = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
@@ -236,7 +236,6 @@ def get_run_metadata(config: DictConfig, seed: int, wandb_id: str | dict | None 
         git = "unknown"
     return {
         "git_sha": git,
-        "seed": seed,
         "wandb_id": wandb_id,
     }
 

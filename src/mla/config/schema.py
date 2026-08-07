@@ -59,7 +59,7 @@ class PreTrainingConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
-    seeds: list[int] = MISSING
+    pre_training_seeds: list[int] = MISSING
 
 
 @dataclass
@@ -78,6 +78,9 @@ class FineTuningConfig:
     output_compression_dim: int | None = None
 
     # Dataset
+    max_load_pct: int | None = None
+    train_token_budget: int | None = None
+    val_token_budget: int | None = None
     dataset_name: str = MISSING
     dataset_config_name: str | None = ""
     drop_last: bool = MISSING
@@ -96,15 +99,8 @@ class FineTuningConfig:
     weight_decay: float = MISSING
 
     # Model
-    pretrained_model_name: str = MISSING
-    fine_tuned_model_name: str = MISSING
-    n_layer: int = MISSING
-    n_head: int = MISSING
     hidden_size: int = MISSING
-    intermediate_size: int = MISSING
     max_seq_length: int = MISSING
-    max_position_embeddings: int = MISSING
-    dropout_rate: float = MISSING
     num_labels: int = MISSING
     mixed_precision: str = MISSING
     loss_type: str | None = None
@@ -116,7 +112,8 @@ class FineTuningConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
-    seeds: list[int] = MISSING
+    pre_training_seed: int | None = None
+    fine_tuning_seeds: list[int] = MISSING
 
 
 cs = ConfigStore.instance()

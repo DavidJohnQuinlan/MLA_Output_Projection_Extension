@@ -36,17 +36,17 @@ def model_pretraining(config: DictConfig) -> None:
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
 
     data_paths = get_pretrain_paths(root_dir, config)
-    dataset = import_and_prepare_data(tokenizer, config, data_paths)
+    datasets = import_and_prepare_data(tokenizer, config, data_paths.tokenized_data_path)
     results_csv_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv"
 
     # Independent pretraining run per seed
-    for seed in config.seeds:
+    for seed in config.pre_training_seeds:
         paths = get_pretrain_paths(root_dir, config, seed)
         if paths.model_file_path.exists():
             logger.info("Skipping seed=%d — checkpoint exists: %s", seed, paths.model_file_path)
             continue
         set_all_seeds(seed)
-        train_loader, validation_loader = prepare_dataloaders(dataset, tokenizer, config, collator_fn=None)
+        train_loader, validation_loader = prepare_dataloaders(datasets, tokenizer, config, collator_fn=None)
         logger.info(f"(Seed={seed}): Train batches: {len(train_loader)}  Val batches: {len(validation_loader)}")
 
         logger.info(f"(Seed={seed}): Loading checkpoint config: {config.model_config_name}")

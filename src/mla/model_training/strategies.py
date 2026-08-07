@@ -2,6 +2,7 @@ import math
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -9,6 +10,7 @@ from omegaconf import DictConfig
 from torch import nn
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
+from functools import partial
 
 from mla.config.paths import Paths, build_model_name
 from mla.model_training.model_training import ModelPreTraining
@@ -37,16 +39,19 @@ class TrainingStrategy(ABC):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        seed: int
+        pre_training_seed: int
         ) -> dict: ...
 
 
-class FineTuningStrategy(TrainingStrategy):
+class FineTuningStrategy(ABC):
     @abstractmethod
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module: ...
 
     @abstractmethod
-    def build_results(self, results: dict, config: DictConfig) -> dict: ...
+    def metric_cls(self, config) -> type[MetricEvaluationProtocol]: ...
+
+    @abstractmethod
+    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict: ...
 
 
 class BERTPretrainingStrategy(TrainingStrategy):
@@ -73,7 +78,7 @@ class BERTPretrainingStrategy(TrainingStrategy):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        seed: int
+        pre_training_seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -84,11 +89,12 @@ class BERTPretrainingStrategy(TrainingStrategy):
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
-            **get_run_metadata(config, seed, pretrainer.wandb_id),
+            **get_run_metadata(pretrainer.wandb_id),
+            "pre_training_seed": pre_training_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{build_model_name(config, seed)}.th",
+            "model_name": f"{build_model_name(config, pre_training_seed)}.th",
             "attention_mechanism": config.attention_mechanism,
-            "dataset": config.dataset_config_name,
+            "dataset": f"{config.dataset_name}_{config.dataset_config_name}" if config.dataset_config_name else config.dataset_name,
             "n_params": params,
             "GFLOPS": f"{flops / 1e9:.3f}",
             "GMACS": f"{macs / 1e9:.3f}",
@@ -134,7 +140,7 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        seed: int
+        pre_training_seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -145,11 +151,12 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
         return {
-            **get_run_metadata(config, seed, pretrainer.wandb_id),
+            **get_run_metadata(pretrainer.wandb_id),
+            "pre_training_seed": pre_training_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{build_model_name(config, seed)}.th",
+            "model_name": f"{build_model_name(config, pre_training_seed)}.th",
             "attention_mechanism": config.attention_mechanism,
-            "dataset": config.dataset_config_name,
+            "dataset": f"{config.dataset_name}_{config.dataset_config_name}" if config.dataset_config_name else config.dataset_name,
             "n_params": params,
             "GFLOPS": f"{flops / 1e9:.3f}",
             "GMACS": f"{macs / 1e9:.3f}",
@@ -172,43 +179,27 @@ class GPT2PretrainingStrategy(TrainingStrategy):
 
 class BERTFineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        bert_config = BertConfig(
-            hidden_size=config.hidden_size,
-            num_hidden_layers=config.n_layer,
-            num_attention_heads=config.n_head,
-            intermediate_size=config.intermediate_size,
-            max_position_embeddings=config.max_position_embeddings,
-            num_labels=config.num_labels,
-            attention_mechanism=config.attention_mechanism,
-            kv_compression_dim=config.kv_compression_dim,
-            q_compression_dim=config.q_compression_dim,
-            output_compression_dim=config.output_compression_dim,
-        )
-
-        # Load the pretrained BERT model
         bert_model = ModelPreTraining.load_model(
             model_class=BertForMaskedLM,
-            model_config=bert_config,
             checkpoint_path=paths.pretrained_model_path,
+            config_class=BertConfig,
+            config_overrides={"num_labels": config.num_labels},
         )
+        bert_classifier = BertForSequenceClassification.from_pretrained_lm(lm_model=bert_model, config=bert_model.config)
+        return torch.compile(bert_classifier)
 
-        # Convert MLM BERT model to classification BERT
-        bert_classifier = BertForSequenceClassification.from_pretrained_lm(lm_model=bert_model, config=bert_config)
+    def metric_cls(self, config) -> Callable[[], MetricEvaluationProtocol]:
+        return partial(ClassificationMetricEvaluation, num_labels=config.num_labels)
 
-        # Compile the BERT classifier
-        compiled_bert_classifier = torch.compile(bert_classifier)
-        return compiled_bert_classifier
-
-    def metric_cls(self) -> type[MetricEvaluationProtocol]: return ClassificationMetricEvaluation
-
-    def build_results(self, results: dict, config: DictConfig) -> dict[str, Any]:
+    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict[str, Any]:
         """
         Build a results summary dictionary for a finetuning run.
         """
         return {
-            **get_run_metadata(config,  wandb_id=results.get("seed_to_wandb")),
+            **get_run_metadata(wandb_id=results.get("seed_to_wandb")),
+            "pre_training_seed": pre_training_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": config.pretrained_model_name,
+            "model_name": f"{results['pretrained_model_name']}__{config.dataset_config_name}",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "kv": config.kv_compression_dim,
@@ -226,43 +217,27 @@ class BERTFineTuningStrategy(FineTuningStrategy):
 
 class GPT2FineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        model_config = GPT2Config(
-            hidden_size=config.hidden_size,
-            n_layer=config.n_layer,
-            n_head=config.n_head,
-            n_embd=config.hidden_size,
-            n_positions=config.max_position_embeddings,
-            num_labels=config.num_labels,
-            attention_mechanism=config.attention_mechanism,
-            kv_compression_dim=config.kv_compression_dim,
-            q_compression_dim=config.q_compression_dim,
-            output_compression_dim=config.output_compression_dim,
-        )
-
-        # Load the pretrained GPT2 model
         gpt2_model = ModelPreTraining.load_model(
             model_class=GPT2LMHeadModel,
-            model_config=model_config,
             checkpoint_path=paths.pretrained_model_path,
+            config_class=GPT2Config,
+            config_overrides={"num_labels": config.num_labels},
         )
+        gpt2_classifier = GPT2ForSequenceClassification.from_pretrained_lm(lm_model=gpt2_model, config=gpt2_model.config)
+        return torch.compile(gpt2_classifier)
 
-        # Convert GPT2 model to classification GPT2
-        gpt2_classifier = GPT2ForSequenceClassification.from_pretrained_lm(lm_model=gpt2_model, config=model_config)
+    def metric_cls(self, config) -> Callable[[], MetricEvaluationProtocol]:
+        return partial(ClassificationMetricEvaluation, num_labels=config.num_labels)
 
-        # Compile the GPT2 classifier
-        compiled_gpt2_classifier = torch.compile(gpt2_classifier)
-        return compiled_gpt2_classifier
-
-    def metric_cls(self) -> type[MetricEvaluationProtocol]: return ClassificationMetricEvaluation
-
-    def build_results(self, results: dict, config: DictConfig) -> dict[str, Any]:
+    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict[str, Any]:
         """
         Build a results summary dictionary for a finetuning run.
         """
         return {
-            **get_run_metadata(config,  wandb_id=results.get("seed_to_wandb")),
+            **get_run_metadata(wandb_id=results.get("seed_to_wandb")),
+            "pre_training_seed": pre_training_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": config.pretrained_model_name,
+            "model_name": f"{results['pretrained_model_name']}__{config.dataset_config_name}",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "kv": config.kv_compression_dim,

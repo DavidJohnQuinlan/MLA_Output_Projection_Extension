@@ -38,7 +38,7 @@ def get_config_name(base_model: str, architecture: str, task: str, kv: int, q: i
         return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_mlae_{task}_kv{kv}_q{q}_o{o}"
 
 
-def run_glue_benchmark(base_model: str, architecture: str, kv: int, q: int, o: int) -> None:
+def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: int, kv: int, q: int, o: int) -> None:
     """
     Runs fine-tuning across all GLUE tasks for a single architecture.
 
@@ -57,11 +57,13 @@ def run_glue_benchmark(base_model: str, architecture: str, kv: int, q: int, o: i
     failed = []
     for task in GLUE_TASKS:
         config_name = get_config_name(base_model, architecture, task, kv, q, o)
-        print(f"\n--- {base_model} - {architecture} - {task.upper()} ---")
+        print(f"\n--- {base_model} - {architecture} - {task.upper()} - {pre_training_seed} ---")
         try:
             subprocess.run(
                 [sys.executable, "-m", "mla.model_training.model_finetuning",
-                 f"--config-name={config_name}"],
+                 f"--config-name={config_name}",
+                 f"+pre_training_seed={pre_training_seed}",
+                 ],
                 check=True,
             )
         except subprocess.CalledProcessError:
@@ -78,8 +80,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", choices=["BERT", "GPT2"], required=True)
     parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
+    parser.add_argument("--pre_training_seed", required=True)
     parser.add_argument("--kv", type=int, default=None)
     parser.add_argument("--q", type=int, default=None)
     parser.add_argument("--o", type=int, default=None)
     args = parser.parse_args()
-    run_glue_benchmark(args.base_model, args.architecture, args.kv, args.q, args.o)
+    run_glue_benchmark(args.base_model, args.architecture, args.pre_training_seed, args.kv, args.q, args.o)

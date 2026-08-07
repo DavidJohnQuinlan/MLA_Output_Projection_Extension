@@ -32,14 +32,8 @@ learning_rate: 3e-5
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MLA_kv32_q32
-fine_tuned_model_name: fine_tuning_rte__TinyGPT2_MLA__kv32_q32
-n_layer: 6
-n_head: 4
 hidden_size: 312
-max_seq_length: 128
-max_position_embeddings: 128
-dropout_rate: 0.1
+max_seq_length: 512
 num_labels: 2
 mixed_precision: "no"
 
@@ -50,4 +44,4 @@ gradient_accumulation_steps: 1
 train_eval_steps: 10
 eval_steps: 50
 eval_metric: "accuracy"
-seeds: [42, 123, 456, 789, 999]
+fine_tuning_seeds: [42, 123, 456, 789, 999]
