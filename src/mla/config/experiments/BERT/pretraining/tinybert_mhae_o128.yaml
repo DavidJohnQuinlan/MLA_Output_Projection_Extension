@@ -33,7 +33,6 @@ learning_rate: 5e-4
 weight_decay: 0.01
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyBERT_MHAE_o128
 n_layer: 4
 n_head: 12
 hidden_size: 312

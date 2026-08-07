@@ -41,7 +41,6 @@ class PreTrainingConfig:
     weight_decay: float = MISSING
 
     # Model
-    pretrained_model_name: str = MISSING
     n_layer: int = MISSING
     n_head: int = MISSING
     hidden_size: int = MISSING

@@ -20,11 +20,12 @@ def build_dataset_name(config: DictConfig) -> str:
     """
     Cache-dir name that is unique to the dataset and its processing params.
     """
-    name = config.dataset_name.replace("/", "__")
+    dataset_name = config.dataset_name.replace("/", "__")
+    dataset_config_name = config.dataset_config_name if config.dataset_config_name else ""
     keys = ["dataset_name", "dataset_config_name", "max_seq_length", "train_token_budget", "val_token_budget", "max_load_pct"]
     payload = json.dumps({k: config.get(k) for k in keys}, sort_keys=True, default=str)
     digest = hashlib.md5(payload.encode()).hexdigest()[:10]
-    return f"{name}_{digest}"
+    return f"{dataset_name}_{dataset_config_name}_{digest}"
 
 
 def build_model_name(config: DictConfig, seed: int | None = None) -> str:

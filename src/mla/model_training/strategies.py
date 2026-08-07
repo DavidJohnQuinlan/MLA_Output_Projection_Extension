@@ -10,7 +10,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
 
-from mla.config.paths import Paths
+from mla.config.paths import Paths, build_model_name
 from mla.model_training.model_training import ModelPreTraining
 from mla.models.BERT.config import BertConfig
 from mla.models.BERT.heads import BertForMaskedLM, BertForSequenceClassification
@@ -86,7 +86,7 @@ class BERTPretrainingStrategy(TrainingStrategy):
         return {
             **get_run_metadata(config, seed, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
-            "model_name": config.pretrained_model_name,
+            "model_name": f"{build_model_name(config, seed)}.th",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "n_params": params,
@@ -147,7 +147,7 @@ class GPT2PretrainingStrategy(TrainingStrategy):
         return {
             **get_run_metadata(config, seed, pretrainer.wandb_id),
             "timestamp": datetime.now().isoformat(),
-            "model_name": config.pretrained_model_name,
+            "model_name": f"{build_model_name(config, seed)}.th",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "n_params": params,

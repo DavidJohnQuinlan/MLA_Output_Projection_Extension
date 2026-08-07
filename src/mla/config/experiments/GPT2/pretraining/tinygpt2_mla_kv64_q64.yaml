@@ -33,7 +33,6 @@ learning_rate: 5e-4
 weight_decay: 0.1
 
 # Model
-pretrained_model_name: pre_training_wikitext-103-raw-v1__TinyGPT2_MLA_kv64_q64
 n_layer: 6
 n_head: 4
 hidden_size: 312
