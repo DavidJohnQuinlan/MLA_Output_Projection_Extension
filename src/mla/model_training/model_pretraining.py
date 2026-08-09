@@ -43,7 +43,7 @@ def model_pretraining(config: DictConfig) -> None:
     for seed in config.pre_training_seeds:
         paths = get_pretrain_paths(root_dir, config, seed)
         if paths.model_file_path.exists():
-            logger.info("Skipping seed=%d — checkpoint exists: %s", seed, paths.model_file_path)
+            print(f"Skipping seed={seed} — checkpoint exists: {paths.model_file_path}\n")
             continue
         set_all_seeds(seed)
         train_loader, validation_loader = prepare_dataloaders(datasets, tokenizer, config, collator_fn=None)

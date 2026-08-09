@@ -17,8 +17,8 @@ output_compression_dim: null
 # Dataset
 dataset_name: Skylion007/openwebtext
 dataset_config_name: null
-max_load_pct: 15
-train_token_budget: 1_000_000_000
+max_load_pct: 22
+train_token_budget: 1_400_000_000
 val_token_budget: 1_000_000
 drop_last: True
 sentence_keys: ["text"]
@@ -28,7 +28,7 @@ num_workers: 0
 pin_memory: False
 
 # Optimizer
-max_steps: 25000
+max_steps: 20000
 warmup: True
 warmup_rate: 0.05
 max_norm: 1.0

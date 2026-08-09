@@ -57,19 +57,17 @@ def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: in
     failed = []
     for task in GLUE_TASKS:
         config_name = get_config_name(base_model, architecture, task, kv, q, o)
-        print(f"\n--- {base_model} - {architecture} - {task.upper()} - {pre_training_seed} ---")
+        seed_label = str(pre_training_seed) if pre_training_seed is not None else "all"
+        print(f"\n--- {base_model} - {architecture} - {task.upper()} - {seed_label} ---")
+        cmd = [sys.executable, "-m", "mla.model_training.model_finetuning", f"--config-name={config_name}"]
+        if pre_training_seed is not None:
+            cmd.append(f"+pre_training_seed={pre_training_seed}")
         try:
-            subprocess.run(
-                [sys.executable, "-m", "mla.model_training.model_finetuning",
-                 f"--config-name={config_name}",
-                 f"+pre_training_seed={pre_training_seed}",
-                 ],
-                check=True,
-            )
+            subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
             print(f"  FAILED — skipping {task.upper()}")
             failed.append(task)
-
+            
     if failed:
         print(f"\nBenchmark complete. Failed tasks: {', '.join(t.upper() for t in failed)}")
     else:
@@ -80,7 +78,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", choices=["BERT", "GPT2"], required=True)
     parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
-    parser.add_argument("--pre_training_seed", required=True)
+    parser.add_argument("--pre_training_seed", required=False)
     parser.add_argument("--kv", type=int, default=None)
     parser.add_argument("--q", type=int, default=None)
     parser.add_argument("--o", type=int, default=None)

@@ -181,7 +181,7 @@ def import_and_prepare_data(
     """
     config_label = config.dataset_config_name or "default"
     if Path.exists(tokenized_dataset_path):
-        print(f"Loading {config.dataset_name}/{config_label} dataset from: {tokenized_dataset_path}")
+        print(f"Loading {config.dataset_name}/{config_label} dataset from: {tokenized_dataset_path}\n")
         return load_from_disk(tokenized_dataset_path)
 
     print(f"Processed dataset not found. Building: {config.dataset_name}/{config_label}")
