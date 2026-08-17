@@ -1,0 +1,47 @@
+# @package _global_
+defaults:
+  - /fine_tuning_schema
+  - _self_
+
+experiment_name: TinyGPT2_MLAE_CoLA_kv16_q16_o16
+base_model: GPT2
+attention_mechanism: MLAE
+job_type: fine_tuning
+experiment_project: TinyGPT2
+model_config_name: gpt2
+kv_compression_dim: 16
+q_compression_dim: 16
+output_compression_dim: 16
+
+# Dataset
+dataset_name: glue
+dataset_config_name: cola
+drop_last: True
+sentence_keys: ["sentence"]
+task_type: fine_tuning
+parallel_processes: 8
+num_workers: 0
+pin_memory: False
+
+# Optimizer
+max_steps: 2670 # 267 * 10
+warmup: True
+warmup_rate: 0.05
+max_norm: 1.0
+learning_rate: 3e-5
+weight_decay: 0.01
+
+# Model
+hidden_size: 312
+max_seq_length: 512
+num_labels: 2
+mixed_precision: "no"
+
+# Training
+batch_size: 32
+eval_batch_size: 512
+gradient_accumulation_steps: 1
+train_eval_steps: 10
+eval_steps: 500
+eval_metric: "mcc"
+fine_tuning_seeds: [42, 123, 456, 789, 999]
