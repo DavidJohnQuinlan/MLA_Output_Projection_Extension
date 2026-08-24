@@ -49,8 +49,8 @@ class BaseModelTraining(ABC):
 
         self.config = config
         self.accelerator = Accelerator(
-            gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            mixed_precision=self.config.mixed_precision,
+            gradient_accumulation_steps=config.gradient_accumulation_steps,
+            mixed_precision=config.mixed_precision,
         )
         self.optimizer = self._build_optimizer(model, optimizer)
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)

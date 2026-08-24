@@ -5,7 +5,7 @@ import sys
 GLUE_TASKS = ["rte", "mrpc", "cola", "sst2", "qnli", "qqp", "mnli"]
 
 
-def get_config_name(base_model: str, architecture: str, task: str, kv: int, q: int, o: int) -> str:
+def get_config_name(base_model: str, architecture: str, task: str) -> str:
     """
     Builds the Hydra config name for a given architecture, task, and compression dimensions.
 
@@ -16,26 +16,17 @@ def get_config_name(base_model: str, architecture: str, task: str, kv: int, q: i
     Args:
         base_model: One of "BERT" or "GPT2".
         architecture: One of "MHA", "MHAE", "MLA", or "MLAE".
-        task: GLUE task name in any case (e.g. "sst2", "MRPC").
-        kv: KV compression dimension. Ignored for MHA.
-        q: Query compression dimension. Ignored for MHA.
-        o: Output compression dimension. Used only for MLAE or MHAE.
+        task: GLUE task name in any case (e.g. "sst2", "mrpc").
 
     Returns:
-        Hydra config name string, e.g. "SST2/tinybert_mla_sst2_kv128_q128".
+        Hydra config name string, e.g. "SST2/tinybert_mla_sst2".
     """
     task = task.lower()
     TASK = task.upper()
     base_model = base_model.lower()
     BASE_MODEL = base_model.upper()
-    if architecture == "MHA":
-        return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_mha_{task}"
-    elif architecture == "MHAE":
-        return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_mhae_{task}_o{o}"
-    elif architecture == "MLA":
-        return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_mla_{task}_kv{kv}_q{q}"
-    elif architecture == "MLAE":
-        return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_mlae_{task}_kv{kv}_q{q}_o{o}"
+    architecture = architecture.lower()
+    return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_{architecture}_{task}"
 
 
 def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: int, kv: int, q: int, o: int) -> None:
@@ -56,10 +47,16 @@ def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: in
     """
     failed = []
     for task in GLUE_TASKS:
-        config_name = get_config_name(base_model, architecture, task, kv, q, o)
+        config_name = get_config_name(base_model, architecture, task)
         seed_label = str(pre_training_seed) if pre_training_seed is not None else "all"
         print(f"\n--- {base_model} - {architecture} - {task.upper()} - {seed_label} ---")
         cmd = [sys.executable, "-m", "mla.model_training.model_finetuning", f"--config-name={config_name}"]
+
+        if architecture in ["MLA", "MLAE"]:
+            cmd += [f"kv_compression_dim={kv}", f"q_compression_dim={q}"]
+        if architecture in ["MHAE", "MLAE"]:
+            cmd += [f"output_compression_dim={o}"]
+
         if pre_training_seed is not None:
             cmd.append(f"+pre_training_seed={pre_training_seed}")
         try:

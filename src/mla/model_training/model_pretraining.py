@@ -7,10 +7,12 @@ from torch.optim import AdamW
 from transformers import AutoTokenizer
 
 from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
+from mla.config.schema import validate_compression_dims
 from mla.model_training.model_training import ModelPreTraining
 from mla.model_training.strategies import _PRETRAINING_STRATEGIES
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table, set_all_seeds
+
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -31,6 +33,7 @@ def model_pretraining(config: DictConfig) -> None:
         config (DictConfig): Hydra config containing all experiment, optimizer, and training parameters.
     """
     configure_logging()
+    validate_compression_dims(config)
     root_dir = Path(hydra.utils.get_original_cwd())
     strategy = _PRETRAINING_STRATEGIES[config.base_model]
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)

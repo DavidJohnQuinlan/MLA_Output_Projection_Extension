@@ -1,7 +1,24 @@
 from dataclasses import dataclass
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING
+from omegaconf import DictConfig, MISSING
+
+
+_CONFIG_REQUIRED_DIMS = {
+    "MHAE": ["output_compression_dim"],
+    "MLA":  ["kv_compression_dim", "q_compression_dim"],
+    "MLAE": ["kv_compression_dim", "q_compression_dim", "output_compression_dim"],
+}
+
+
+def validate_compression_dims(config: DictConfig) -> None:
+    required = _CONFIG_REQUIRED_DIMS.get(config.attention_mechanism, [])
+    missing = [k for k in required if config.get(k) is None]
+    if missing:
+        raise ValueError(
+            f"{config.attention_mechanism} requires {missing}; "
+            f"pass them on the CLI, e.g. {missing[0]}=128"
+        )
 
 
 @dataclass

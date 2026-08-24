@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, DataCollatorWithPadding
 
 from mla.config.paths import TRAINING_MODELS_DIR, Paths, discover_pre_trained_checkpoints, get_finetune_paths, resolve_checkpoint
+from mla.config.schema import validate_compression_dims
 from mla.model_training.model_training import ModelFineTuning
 from mla.model_training.strategies import _FINETUNING_STRATEGIES, FineTuningStrategy
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
@@ -146,6 +147,7 @@ def _finetune_setup(config: DictConfig) -> tuple[Path, FineTuningStrategy, Path]
     Shared per-entry setup: logging, root dir, strategy, results path.
     """
     configure_logging()
+    validate_compression_dims(config)
     root_dir = Path(hydra.utils.get_original_cwd())
     strategy = _FINETUNING_STRATEGIES[config.base_model]
     results_csv = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / "finetune_results.csv"
