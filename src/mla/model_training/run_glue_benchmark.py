@@ -29,7 +29,14 @@ def get_config_name(base_model: str, architecture: str, task: str) -> str:
     return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_{architecture}_{task}"
 
 
-def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: int, kv: int, q: int, o: int) -> None:
+def run_glue_benchmark(
+        base_model: str,
+        architecture: str,
+        pre_training_seed: int | None = None,
+        kv: int | None = None,
+        q: int | None = None,
+        o: int | None = None,
+    ) -> None:
     """
     Runs fine-tuning across all GLUE tasks for a single architecture.
 
@@ -71,13 +78,16 @@ def run_glue_benchmark(base_model: str, architecture: str, pre_training_seed: in
         print("\nBenchmark complete. All tasks passed.")
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", choices=["BERT", "GPT2"], required=True)
     parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
     parser.add_argument("--pre_training_seed", required=False)
-    parser.add_argument("--kv", type=int, default=None)
-    parser.add_argument("--q", type=int, default=None)
-    parser.add_argument("--o", type=int, default=None)
+    parser.add_argument("--kv", type=int, default=None, required=False)
+    parser.add_argument("--q", type=int, default=None, required=False)
+    parser.add_argument("--o", type=int, default=None, required=False)
     args = parser.parse_args()
     run_glue_benchmark(args.base_model, args.architecture, args.pre_training_seed, args.kv, args.q, args.o)
+
+if __name__ == "__main__":
+    main()

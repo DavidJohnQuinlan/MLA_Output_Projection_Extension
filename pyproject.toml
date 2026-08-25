@@ -44,3 +44,4 @@ dev = [
 [project.scripts]
 pretrain = "mla.model_training.model_pretraining:model_pretraining"
 finetune = "mla.model_training.model_finetuning:run_fine_tuning"
+run_glue_benchmark = "mla.model_training.run_glue_benchmark:main"
