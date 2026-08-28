@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import DictConfig, MISSING
-
+from omegaconf import MISSING, DictConfig
 
 _CONFIG_REQUIRED_DIMS = {
     "MHAE": ["output_compression_dim"],

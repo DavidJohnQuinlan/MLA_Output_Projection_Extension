@@ -170,15 +170,12 @@ class BaseModelTraining(ABC):
         if self.training_bar: self.training_bar.close()
         if self.validation_bar: self.validation_bar.close()
 
-    def _is_best_model(self, validation_loss: LossMeter, validation_metrics: dict) -> bool:
-        """
-        Defines whether the current model is better than the best loss value.
-        """
-        if validation_loss.avg < self.best_validation_loss:
-            self.best_validation_loss = validation_loss.avg
-            wandb.run.summary["best_validation_loss"] = validation_loss.avg
-            return True
-        return False
+    @abstractmethod
+    def _is_best_model(
+        self,
+        validation_loss: LossMeter,
+        validation_metrics: dict
+    ) -> bool: ...
 
     @abstractmethod
     def _log_metrics(
@@ -321,8 +318,8 @@ class BaseModelTraining(ABC):
                 validation_loss.update(loss, n=n_tokens)
                 self._update_progress_bars(mode=mode, loss_value=validation_loss.avg)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
-                validation_metrics = self.metric_fn.compute()
 
+            validation_metrics = self.metric_fn.compute()
             elapsed = time.time() - self._validation_step_start_time
             steps_per_sec = len(validation_dataloader) / elapsed
             samples_per_sec = len(validation_dataloader.dataset) / elapsed
@@ -467,6 +464,16 @@ class ModelPreTraining(BaseModelTraining):
 
         wandb.log(log_dict, step=self.global_step)
 
+    def _is_best_model(self, validation_loss: LossMeter, validation_metrics: dict) -> bool:
+        """
+        Defines whether the current model is better than the best loss value.
+        """
+        if validation_loss.avg < self.best_validation_loss:
+            self.best_validation_loss = validation_loss.avg
+            wandb.run.summary["best_validation_loss"] = validation_loss.avg
+            return True
+        return False
+
     def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, validation_dataloader)
         wandb.unwatch()
@@ -517,7 +524,7 @@ class ModelFineTuning(BaseModelTraining):
         wandb.define_metric("validation/f1", summary="max")
         wandb.define_metric("validation/mcc", summary="max")
         wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        self.best_metric = 0.0
+        self.best_metric = -float("inf")
 
     def _log_metrics(
         self,

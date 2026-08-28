@@ -1,8 +1,9 @@
 import math
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any
 from collections.abc import Callable
+from datetime import datetime
+from functools import partial
+from typing import Any
 
 import numpy as np
 import torch
@@ -10,7 +11,6 @@ from omegaconf import DictConfig
 from torch import nn
 from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizerBase
-from functools import partial
 
 from mla.config.paths import Paths, build_model_name
 from mla.model_training.model_training import ModelPreTraining
@@ -24,7 +24,7 @@ from mla.utils.model_utils import CausalLMMetricEvaluation, ClassificationMetric
 from mla.utils.utils import calculate_flop_metrics, compute_training_compute, get_run_metadata, measure_inference_cost
 
 
-class TrainingStrategy(ABC):
+class PreTrainingStrategy(ABC):
     @abstractmethod
     def build_model(self, config: DictConfig) -> nn.Module: ...
 
@@ -54,7 +54,7 @@ class FineTuningStrategy(ABC):
     def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict: ...
 
 
-class BERTPretrainingStrategy(TrainingStrategy):
+class BERTPretrainingStrategy(PreTrainingStrategy):
     def build_model(self, config: DictConfig) -> nn.Module:
         model_config = BertConfig(
             hidden_size=config.hidden_size,
@@ -114,7 +114,7 @@ class BERTPretrainingStrategy(TrainingStrategy):
         }
 
 
-class GPT2PretrainingStrategy(TrainingStrategy):
+class GPT2PretrainingStrategy(PreTrainingStrategy):
     def build_model(self, config: DictConfig) -> nn.Module:
         model_config = GPT2Config(
             hidden_size=config.hidden_size,
@@ -252,7 +252,7 @@ class GPT2FineTuningStrategy(FineTuningStrategy):
             "batch_size": config.batch_size,
         }
 
-_PRETRAINING_STRATEGIES: dict[str, TrainingStrategy] = {
+_PRETRAINING_STRATEGIES: dict[str, PreTrainingStrategy] = {
     "BERT": BERTPretrainingStrategy(),
     "GPT2": GPT2PretrainingStrategy(),
 }

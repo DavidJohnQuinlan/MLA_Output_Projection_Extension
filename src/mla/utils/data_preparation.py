@@ -122,6 +122,8 @@ def split_by_token_budget(dataset: DatasetDict, config: DictConfig) -> DatasetDi
     (e.g. WikiText) keep it; those without (e.g. OpenWebText) get one carved from
     a shuffled copy of the packed train blocks using a fixed seed, so the held-out
     set is identical across all runs.
+
+    TODO: I feel that some minor improvements in the flow of this function could be made?
     """
     n_train = config.train_token_budget // config.max_seq_length if config.train_token_budget is not None else None
     n_val = config.val_token_budget // config.max_seq_length if config.val_token_budget is not None else None
@@ -203,10 +205,12 @@ def import_and_prepare_data(
 
 class DeterministicDataCollator(DataCollatorForLanguageModeling):
     def __call__(self, examples):
-        # Every time a batch is created, we reset the seed
-        # Use a fixed seed or one based on the example IDs if available
+        state = torch.get_rng_state()
         torch.manual_seed(DATA_CREATION_SEED)
-        return super().__call__(examples)
+        try:
+            return super().__call__(examples)
+        finally:
+            torch.set_rng_state(state)
 
 
 class CreateDataloaders:
@@ -295,7 +299,8 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
         )
 
         # This guarantees that the validation metric remains perfectly stable and comparable
-        validation_collator = DeterministicDataCollator(
+        val_collator_cls = DeterministicDataCollator if config.mlm else DataCollatorForLanguageModeling
+        validation_collator = val_collator_cls(
             tokenizer=tokenizer,
             mlm=config.mlm,
             mlm_probability=config.mlm_probability

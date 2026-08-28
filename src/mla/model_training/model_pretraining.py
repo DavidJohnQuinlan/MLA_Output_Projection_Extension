@@ -13,7 +13,6 @@ from mla.model_training.strategies import _PRETRAINING_STRATEGIES
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
 from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table, set_all_seeds
 
-
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 

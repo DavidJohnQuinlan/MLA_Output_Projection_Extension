@@ -74,9 +74,6 @@ def model_fine_tuning(
     Returns:
         tuple[LossMeter, dict]: Validation loss and validation metrics.
     """
-    # Set the seed
-    set_all_seeds(fine_tuning_seed)
-
     # Fine tune the model
     fine_tuner = ModelFineTuning(model, optimizer, metric_fn, config, paths, fine_tuning_seed)
     fine_tuner.fine_tune_model(training_dataloader=train_dataloader, validation_dataloader=validation_dataloader)
@@ -106,6 +103,7 @@ def fine_tune_checkpoint(
     runs: list[FineTuneRun] = []
     for fine_tuning_seed in config.fine_tuning_seeds:
         paths = get_finetune_paths(root_dir, config, checkpoint_path, fine_tuning_seed)
+        set_all_seeds(fine_tuning_seed)
         train_dataloader, validation_dataloader = prepare_fine_tune_data(config, paths)
         logger.info("pre_training_seed=%d fine_tuning_seed=%d  Train batches: %d  Val batches: %d",
                     pre_training_seed, fine_tuning_seed, len(train_dataloader), len(validation_dataloader))

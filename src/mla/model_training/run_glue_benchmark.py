@@ -71,7 +71,7 @@ def run_glue_benchmark(
         except subprocess.CalledProcessError:
             print(f"  FAILED — skipping {task.upper()}")
             failed.append(task)
-            
+
     if failed:
         print(f"\nBenchmark complete. Failed tasks: {', '.join(t.upper() for t in failed)}")
     else:
