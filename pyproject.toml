@@ -39,6 +39,7 @@ quote-style = "double"
 [dependency-groups]
 dev = [
     "ruff>=0.15.20",
+    "notebook==7.5.5",
 ]
 
 [project.scripts]

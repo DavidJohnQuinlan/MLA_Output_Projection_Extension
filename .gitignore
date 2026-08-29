@@ -1,9 +1,9 @@
 wandb
 data
-notebooks/
 outputs
-training_data/ 
-training_models/
+training_data
+training_models
+.ipynb_checkpoints
 
 .DS_Store
 mla.egg-info
