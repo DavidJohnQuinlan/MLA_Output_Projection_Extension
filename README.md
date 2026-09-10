@@ -98,8 +98,8 @@ uv run run_glue_benchmark --base_model GPT2 --architecture MHA
 ```
 
 It is worth noting that there are three main entry points to pretrain/finetune models:
-- `pretrain` → `model_pretraining:model_pretraining`
-- `finetune` → `model_finetuning:run_fine_tuning`
+- `pretraining` → `model_pretraining:model_pretraining`
+- `finetuning` → `model_finetuning:run_finetuning`
 - `run_glue_benchmark` → `run_glue_benchmark:main`
 
 ## Configurations
@@ -123,7 +123,7 @@ The general flow of the tasks in this repository is as follows:
 The above commands ran the default pretraining and finetuning commands, however, when one wishes to pretrain a model, they should use the following command:
 
 ```bash
-uv run pretrain --config-name {MODEL_NAME}/pretraining/{model_name}_{attention_architecture} \
+uv run pretraining --config-name={MODEL_NAME}/pretraining/{model_name}_{attention_architecture} \
   kv_compression_dim={kv_compression_dim} q_compression_dim={q_compression_dim} output_compression_dim={output_compression_dim}
 ```
 
@@ -134,7 +134,7 @@ With the parameters `kv_compression_dim`, `q_compression_dim` and `output_compre
 Similarly, when one wishes to finetune a previously pretrained model on a specific GLUE task, they should use the following command:
 
 ```bash
-uv run finetune --config-name {MODEL_NAME}/finetuning/{GLUE_TASK}/{model_name}_{attention_architecture}_{glue_task} \
+uv run finetuning --config-name={MODEL_NAME}/finetuning/{GLUE_TASK}/{model_name}_{attention_architecture}_{glue_task} \
   kv_compression_dim={kv_compression_dim} q_compression_dim={q_compression_dim} output_compression_dim={output_compression_dim}
 ```
 
@@ -146,6 +146,28 @@ uv run run_glue_benchmark --base_model {MODEL_NAME} --architecture {ATTENTION_AR
 ```
 
 With the parameters `kv_compression_dim`, `q_compression_dim` and `output_compression_dim` optional depending on the attention architecture.
+
+### Testing
+
+After making some changes one may wish to quickly test the harness to ensure that everything functions as expected. However, we do not want to pretrain on the full dataset, therefore, to simulate a pretraining run we can use the following command:
+
+#### Pretraining
+
+```bash
+uv run pretraining --config-name={MODEL_NAME}/pretraining/{model_name}_{attention_architecture} \
+  dataset_name=Salesforce/wikitext dataset_config_name=wikitext-2-raw-v1 \
+  max_load_pct=null train_token_budget=100_000 val_token_budget=10_000 \
+  max_steps=2 train_eval_steps=1 eval_steps=1 'pretraining_seeds=[42]'
+```
+
+#### Finetuning
+
+After running the above pretraining command, we can simulate a single finetuning task by running the following command. It is necessary to tie the finetuning job to the pretraining seed.
+
+```bash
+uv run finetuning --config-name={MODEL_NAME}/finetuning/{GLUE_TASK}/{model_name}_{attention_architecture}_{glue_task} \
+  pretraining_seed=42 max_steps=2 train_eval_steps=1 eval_steps=1 'finetuning_seeds=[42]'
+```
 
 ## Results
 ### GPT2

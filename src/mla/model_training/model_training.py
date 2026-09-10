@@ -370,7 +370,7 @@ class BaseModelTraining(ABC):
 
     def _prune_recent_checkpoints(self, keep: int) -> None:
         sorted_checkpoints = sorted(
-            self.recent_checkpoint_prefix.glob("step_*.th"), 
+            self.recent_checkpoint_prefix.glob("step_*.th"),
             key=lambda p: int(p.stem.removeprefix("step_"))
         )
         for checkpoint in sorted_checkpoints[:-keep]:

@@ -28,6 +28,7 @@ packages = ["src/mla"]
 [tool.ruff]
 target-version = "py314"
 line-length = 1000
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 select = ["F", "E", "W", "I", "UP", "B"]
@@ -43,6 +44,6 @@ dev = [
 ]
 
 [project.scripts]
-pretrain = "mla.model_training.model_pretraining:model_pretraining"
-finetune = "mla.model_training.model_finetuning:run_finetuning"
+pretraining = "mla.model_training.model_pretraining:model_pretraining"
+finetuning = "mla.model_training.model_finetuning:run_finetuning"
 run_glue_benchmark = "mla.model_training.run_glue_benchmark:main"
