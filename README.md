@@ -142,7 +142,7 @@ And in the case that one wishes to run the full selection of GLUE tasks the foll
 
 ```bash
 uv run run_glue_benchmark --base_model {MODEL_NAME} --architecture {ATTENTION_ARCHITECTURE} \
-  --pre_training_seed {pre_training_seed} --kv {kv_compression_dim} --q {q_compression_dim} --o {output_compression_dim}
+  --pretraining_seed {pretraining_seed} --kv {kv_compression_dim} --q {q_compression_dim} --o {output_compression_dim}
 ```
 
 With the parameters `kv_compression_dim`, `q_compression_dim` and `output_compression_dim` optional depending on the attention architecture.

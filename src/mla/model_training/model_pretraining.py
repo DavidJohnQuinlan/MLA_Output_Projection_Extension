@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 from torch.optim import AdamW
 from transformers import AutoTokenizer
 
-from mla.config.paths import TRAINING_MODELS_DIR, get_pretrain_paths
+from mla.config.paths import TRAINING_MODELS_DIR, get_pretraining_paths
 from mla.config.schema import validate_compression_dims
 from mla.model_training.model_training import ModelPreTraining
 from mla.model_training.strategies import _PRETRAINING_STRATEGIES
@@ -37,15 +37,15 @@ def model_pretraining(config: DictConfig) -> None:
     strategy = _PRETRAINING_STRATEGIES[config.base_model]
     tokenizer = AutoTokenizer.from_pretrained(config.model_config_name)
 
-    data_paths = get_pretrain_paths(root_dir, config)
+    data_paths = get_pretraining_paths(root_dir, config)
     datasets = import_and_prepare_data(tokenizer, config, data_paths.tokenized_data_path)
-    results_csv_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretrain_results.csv"
+    results_csv_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretraining_results.csv"
 
     # Independent pretraining run per seed
-    for seed in config.pre_training_seeds:
-        paths = get_pretrain_paths(root_dir, config, seed)
-        if paths.model_file_path.exists():
-            print(f"Skipping seed={seed} — checkpoint exists: {paths.model_file_path}\n")
+    for seed in config.pretraining_seeds:
+        paths = get_pretraining_paths(root_dir, config, seed)
+        if paths.best_checkpoint_file_path.exists():
+            print(f"Skipping seed={seed} — checkpoint exists: {paths.best_checkpoint_file_path}\n")
             continue
         set_all_seeds(seed)
         train_loader, validation_loader = prepare_dataloaders(datasets, tokenizer, config, collator_fn=None)
@@ -54,7 +54,7 @@ def model_pretraining(config: DictConfig) -> None:
         logger.info(f"(Seed={seed}): Loading checkpoint config: {config.model_config_name}")
         model = strategy.build_model(config)
 
-        pretrainer = ModelPreTraining(
+        pretraining = ModelPreTraining(
             model=model,
             optimizer=AdamW,
             metric_fn=strategy.metric_cls(),
@@ -64,13 +64,13 @@ def model_pretraining(config: DictConfig) -> None:
         )
 
         logger.info(f"(Seed={seed}): Starting pretraining — attention={config.attention_mechanism} lr={config.learning_rate} max_steps={config.max_steps}")
-        pretrainer.train_model(training_dataloader=train_loader, validation_dataloader=validation_loader)
+        pretraining.model_pretraining(training_dataloader=train_loader, validation_dataloader=validation_loader)
 
         # Save results to central CSV
-        results = strategy.build_results(pretrainer, model, tokenizer, validation_loader, config, seed)
+        results = strategy.build_results(pretraining, model, tokenizer, validation_loader, config, seed)
         append_to_results_csv(results, results_csv_path)
         print_output_table(title="Pretraining Complete", results=results)
-        logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretrainer.best_validation_loss:4f}")
+        logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretraining.best_validation_loss:4f}")
 
 
 if __name__ == "__main__":

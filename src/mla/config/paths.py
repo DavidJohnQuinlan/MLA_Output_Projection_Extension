@@ -12,8 +12,9 @@ TRAINING_MODELS_DIR = "training_models"
 class Paths:
     """Paths to data and model directories for a given experiment."""
     tokenized_data_path: Path
-    model_file_path: Path
-    pretrained_model_path: Path | None = None
+    best_checkpoint_file_path: Path
+    recent_checkpoint_prefix: Path
+    pretraining_checkpoint_path: Path | None = None
 
 
 def build_dataset_name(config: DictConfig) -> str:
@@ -42,15 +43,15 @@ def build_model_name(config: DictConfig, seed: int | None = None) -> str:
     return "_".join(str(p) for p in parts)
 
 
-def discover_pre_trained_checkpoints(root_dir, config) -> list[tuple[str, Path]]:
+def discover_pretraining_checkpoints(root_dir, config) -> list[tuple[str, Path]]:
     """
-    Find all pretrained checkpoints whose variant matches the given config.
+    Find all pretraining checkpoints whose variant matches the given config.
 
     Scans the experiment's pretraining directory for checkpoint sidecars
-    (*.json), each of which stores the model config and pretrain seed written
+    (*.json), each of which stores the model config and pretraining seed written
     at save time. A checkpoint matches when its attention mechanism and kv/q/o
     compression dims equal those in config (None == None for MHA), and its paired
-    .th weights file exists. This is how fine-tuning discovers which pretrained
+    .th weights file exists. This is how fine-tuning discovers which pretraining
     models to evaluate - the filesystem is the source of truth, so every seed that
     was actually trained is picked up without being declared in config.
 
@@ -66,7 +67,7 @@ def discover_pre_trained_checkpoints(root_dir, config) -> list[tuple[str, Path]]
     Raises:
         FileNotFoundError: If no checkpoint matches the variant in config.
     """
-    pre_training_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining"
+    pretraining_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining/checkpoints/best"
 
     def matches(c: dict) -> bool:
         return (c["attention_mechanism"] == config.attention_mechanism
@@ -75,54 +76,56 @@ def discover_pre_trained_checkpoints(root_dir, config) -> list[tuple[str, Path]]
                 and c.get("output_compression_dim") == config.output_compression_dim)
 
     found_checkpoints: list[tuple[int, Path]] = []
-    for sidecar in pre_training_path.glob("*.json"):
+    for sidecar in pretraining_path.glob("*.json"):
         metadata = json.loads(sidecar.read_text())
         checkpoint = sidecar.with_suffix(".th")
         if matches(metadata["config"]) and checkpoint.exists():
             found_checkpoints.append((int(metadata["seed"]), checkpoint))
     if not found_checkpoints:
         raise FileNotFoundError(
-            f"No pretrained checkpoint for attention='{config.attention_mechanism}' "
+            f"No pretraining checkpoint for attention='{config.attention_mechanism}' "
             f"(kv={config.kv_compression_dim}, q={config.q_compression_dim} "
-            f"o={config.output_compression_dim}) in {pre_training_path}")
+            f"o={config.output_compression_dim}) in {pretraining_path}")
     return sorted(found_checkpoints)
 
 
-def resolve_checkpoint(root_dir: Path, config: DictConfig, pre_training_seed: int) -> Path:
+def resolve_checkpoint(root_dir: Path, config: DictConfig, pretraining_seed: int) -> Path:
     """
     Select the one discovered checkpoint matching this variant and a specific pretrain seed.
     """
-    for seed, checkpoint_path in discover_pre_trained_checkpoints(root_dir, config):
-        if seed == pre_training_seed:
+    for seed, checkpoint_path in discover_pretraining_checkpoints(root_dir, config):
+        if seed == pretraining_seed:
             return checkpoint_path
     raise FileNotFoundError(
-        f"No pretrained checkpoint with seed={pre_training_seed} for attention='{config.attention_mechanism}' "
+        f"No pretraining checkpoint with seed={pretraining_seed} for attention='{config.attention_mechanism}' "
         f"(kv={config.kv_compression_dim}, o={config.output_compression_dim})."
     )
 
-def get_pretrain_paths(root_dir: Path, config: DictConfig, pre_training_seed: int | None = None) -> Paths:
+def get_pretraining_paths(root_dir: Path, config: DictConfig, pretraining_seed: int | None = None) -> Paths:
     """
     Builds and returns paths for a pretraining experiment.
 
     Args:
         config (DictConfig): Experiment configuration containing dataset and model name settings.
         root_dir (Path): Root directory of the project.
-        pre_training_seed (int): The pretraining models run seed.
+        pretraining_seed (int): The pretraining models run seed.
 
     Returns:
         Paths: Populated paths for pretraining data and model checkpoint.
     """
+    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "checkpoints"
+    model_name = build_model_name(config, pretraining_seed)
     return Paths(
         tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "pretraining" / build_dataset_name(config),
-        model_file_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / f"{build_model_name(config, pre_training_seed)}.th",
+        best_checkpoint_file_path = checkpoints_dir / "best" / f"{model_name}.th",
+        recent_checkpoint_prefix = checkpoints_dir / "recent" / model_name,
     )
 
-
-def get_finetune_paths(
+def get_finetuning_paths(
         root_dir: Path,
         config: DictConfig,
-        pre_trained_model_path: Path,
-        fine_tuning_seed: int | None
+        pretraining_checkpoint_path: Path,
+        finetuning_seed: int | None
     ) -> Paths:
     """
     Builds and returns paths for a fine-tuning experiment.
@@ -130,14 +133,17 @@ def get_finetune_paths(
     Args:
         config (DictConfig): Experiment configuration containing dataset and model name settings.
         root_dir (Path): Root directory of the project.
-        pre_trained_model_path (Path): Pre-trained model checkpoint path.
+        pretraining_checkpoint_path (Path): Pretraining model checkpoint path.
         finetuning_seed (int | None): Seed for the finetuning model run.
 
     Returns:
-        Paths: Populated paths for fine-tuning data, pretrained checkpoint, and fine-tuned model.
+        Paths: Populated paths for fine-tuning data, pretraining checkpoint, and fine-tuned model checkpoint.
     """
+    model_name = f"{pretraining_checkpoint_path.stem}__{config.dataset_config_name}_ft{finetuning_seed}"
+    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / config.dataset_config_name / "checkpoints"
     return Paths(
         tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "finetuning" / build_dataset_name(config),
-        pretrained_model_path = pre_trained_model_path,
-        model_file_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / config.dataset_config_name /  f"{pre_trained_model_path.stem}__{config.dataset_config_name}_ft{fine_tuning_seed}.th",
+        pretraining_checkpoint_path = pretraining_checkpoint_path,
+        best_checkpoint_file_path =  checkpoints_dir / "best" /  f"{model_name}.th",
+        recent_checkpoint_prefix = checkpoints_dir / "recent" / model_name
     )

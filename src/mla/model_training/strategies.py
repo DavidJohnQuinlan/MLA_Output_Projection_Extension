@@ -39,7 +39,7 @@ class PreTrainingStrategy(ABC):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        pre_training_seed: int
+        pretraining_seed: int
         ) -> dict: ...
 
 
@@ -51,7 +51,7 @@ class FineTuningStrategy(ABC):
     def metric_cls(self, config) -> type[MetricEvaluationProtocol]: ...
 
     @abstractmethod
-    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict: ...
+    def build_results(self, results: dict, config: DictConfig, pretraining_seed: int) -> dict: ...
 
 
 class BERTPretrainingStrategy(PreTrainingStrategy):
@@ -78,7 +78,7 @@ class BERTPretrainingStrategy(PreTrainingStrategy):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        pre_training_seed: int
+        pretraining_seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -90,9 +90,9 @@ class BERTPretrainingStrategy(PreTrainingStrategy):
         avg_cka = compute_model_cka(activations_list)
         return {
             **get_run_metadata(pretrainer.wandb_id),
-            "pre_training_seed": pre_training_seed,
+            "pretraining_seed": pretraining_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{build_model_name(config, pre_training_seed)}.th",
+            "model_name": f"{build_model_name(config, pretraining_seed)}.th",
             "attention_mechanism": config.attention_mechanism,
             "dataset": f"{config.dataset_name}_{config.dataset_config_name}" if config.dataset_config_name else config.dataset_name,
             "n_params": params,
@@ -105,9 +105,9 @@ class BERTPretrainingStrategy(PreTrainingStrategy):
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "pre_training_validation_loss": f"{pretrainer.best_validation_loss:.4f}",
-            "pre_training_top1_mlm_accuracy": f"{pretrainer.best_validation_metrics['accuracy']:.4f}",
-            "pre_training_cka": f"{avg_cka:.4f}",
+            "pretraining_validation_loss": f"{pretrainer.best_validation_loss:.4f}",
+            "pretraining_top1_mlm_accuracy": f"{pretrainer.best_validation_metrics['accuracy']:.4f}",
+            "pretraining_cka": f"{avg_cka:.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,
@@ -140,7 +140,7 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
         tokenizer: PreTrainedTokenizerBase,
         val_loader: DataLoader,
         config: DictConfig,
-        pre_training_seed: int
+        pretraining_seed: int
     ) -> dict:
         """
         Build a results summary dictionary for a pretraining run.
@@ -152,9 +152,9 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
         avg_cka = compute_model_cka(activations_list)
         return {
             **get_run_metadata(pretrainer.wandb_id),
-            "pre_training_seed": pre_training_seed,
+            "pretraining_seed": pretraining_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{build_model_name(config, pre_training_seed)}.th",
+            "model_name": f"{build_model_name(config, pretraining_seed)}.th",
             "attention_mechanism": config.attention_mechanism,
             "dataset": f"{config.dataset_name}_{config.dataset_config_name}" if config.dataset_config_name else config.dataset_name,
             "n_params": params,
@@ -167,10 +167,10 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "pre_training_validation_loss": f"{pretrainer.best_validation_loss:.4f}",
-            "pre_training_validation_perplexity": f"{math.exp(min(pretrainer.best_validation_loss, 20)):.4f}",
-            "pre_training_next_token_accuracy": f"{pretrainer.best_validation_metrics['accuracy']:.4f}",
-            "pre_training_cka": f"{avg_cka:.4f}",
+            "pretraining_validation_loss": f"{pretrainer.best_validation_loss:.4f}",
+            "pretraining_validation_perplexity": f"{math.exp(min(pretrainer.best_validation_loss, 20)):.4f}",
+            "pretraining_next_token_accuracy": f"{pretrainer.best_validation_metrics['accuracy']:.4f}",
+            "pretraining_cka": f"{avg_cka:.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,
@@ -179,9 +179,9 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
 
 class BERTFineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        bert_model = ModelPreTraining.load_model(
+        bert_model = ModelPreTraining.load_checkpoint(
             model_class=BertForMaskedLM,
-            checkpoint_path=paths.pretrained_model_path,
+            checkpoint_path=paths.pretraining_checkpoint_path,
             config_class=BertConfig,
             config_overrides={"num_labels": config.num_labels},
         )
@@ -191,24 +191,24 @@ class BERTFineTuningStrategy(FineTuningStrategy):
     def metric_cls(self, config) -> Callable[[], MetricEvaluationProtocol]:
         return partial(ClassificationMetricEvaluation, num_labels=config.num_labels)
 
-    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict[str, Any]:
+    def build_results(self, results: dict, config: DictConfig, pretraining_seed: int) -> dict[str, Any]:
         """
         Build a results summary dictionary for a finetuning run.
         """
         return {
             **get_run_metadata(wandb_id=results.get("seed_to_wandb")),
-            "pre_training_seed": pre_training_seed,
+            "pretraining_seed": pretraining_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{results['pretrained_model_name']}__{config.dataset_config_name}",
+            "model_name": f"{results['pretraining_model_name']}__{config.dataset_config_name}",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "avg_finetune_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
-            "avg_finetune_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
-            "avg_finetune_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
-            "avg_finetune_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
+            "avg_finetuning_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
+            "avg_finetuning_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
+            "avg_finetuning_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
+            "avg_finetuning_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,
@@ -217,9 +217,9 @@ class BERTFineTuningStrategy(FineTuningStrategy):
 
 class GPT2FineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        gpt2_model = ModelPreTraining.load_model(
+        gpt2_model = ModelPreTraining.load_checkpoint(
             model_class=GPT2LMHeadModel,
-            checkpoint_path=paths.pretrained_model_path,
+            checkpoint_path=paths.pretraining_checkpoint_path,
             config_class=GPT2Config,
             config_overrides={"num_labels": config.num_labels},
         )
@@ -229,24 +229,24 @@ class GPT2FineTuningStrategy(FineTuningStrategy):
     def metric_cls(self, config) -> Callable[[], MetricEvaluationProtocol]:
         return partial(ClassificationMetricEvaluation, num_labels=config.num_labels)
 
-    def build_results(self, results: dict, config: DictConfig, pre_training_seed: int) -> dict[str, Any]:
+    def build_results(self, results: dict, config: DictConfig, pretraining_seed: int) -> dict[str, Any]:
         """
         Build a results summary dictionary for a finetuning run.
         """
         return {
             **get_run_metadata(wandb_id=results.get("seed_to_wandb")),
-            "pre_training_seed": pre_training_seed,
+            "pretraining_seed": pretraining_seed,
             "timestamp": datetime.now().isoformat(),
-            "model_name": f"{results['pretrained_model_name']}__{config.dataset_config_name}",
+            "model_name": f"{results['pretraining_model_name']}__{config.dataset_config_name}",
             "attention_mechanism": config.attention_mechanism,
             "dataset": config.dataset_config_name,
             "kv": config.kv_compression_dim,
             "q": config.q_compression_dim,
             "o": config.output_compression_dim,
-            "avg_finetune_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
-            "avg_finetune_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
-            "avg_finetune_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
-            "avg_finetune_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
+            "avg_finetuning_validation_loss": f"{np.mean(results['loss']):.4f} +/- {np.std(results['loss']):.4f}",
+            "avg_finetuning_accuracy": f"{np.mean(results['accuracy']):.4f} +/- {np.std(results['accuracy']):.4f}",
+            "avg_finetuning_f1": f"{np.mean(results['f1']):.4f} +/- {np.std(results['f1']):.4f}",
+            "avg_finetuning_mcc": f"{np.mean(results['mcc']):.4f} +/- {np.std(results['mcc']):.4f}",
             "max_steps": config.max_steps,
             "learning_rate": config.learning_rate,
             "batch_size": config.batch_size,

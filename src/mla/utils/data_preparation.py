@@ -41,15 +41,15 @@ def tokenize_raw_datasets(dataset: DatasetDict, tokenizer: PreTrainedTokenizerBa
     (group_texts flattens every key, so stray columns would corrupt it).
     Fine-tuning keeps the label column for the classifier and drops only the text.
     """
-    is_fine_tuning = config.task_type == "fine_tuning"
+    is_finetuning = config.task_type == "finetuning"
     a_split = next(iter(dataset))
-    remove_cols = config.sentence_keys if is_fine_tuning else dataset[a_split].column_names
+    remove_cols = config.sentence_keys if is_finetuning else dataset[a_split].column_names
 
     return dataset.map(
         lambda x: tokenizer(
             *[x[k] for k in config.sentence_keys],
-            truncation=is_fine_tuning,
-            max_length=config.max_seq_length if is_fine_tuning else None,
+            truncation=is_finetuning,
+            max_length=config.max_seq_length if is_finetuning else None,
         ),
         batched=True,
         remove_columns=remove_cols,
@@ -191,7 +191,7 @@ def import_and_prepare_data(
     clean_datasets = clean_raw_datasets(raw_datasets, config)
     tokenize_datasets = tokenize_raw_datasets(clean_datasets, tokenizer, config)
 
-    if config.task_type == "pre_training":
+    if config.task_type == "pretraining":
         datasets = split_by_token_budget(pack(tokenize_datasets, config), config)
     else:
         datasets = prepare_finetuning_datasets(tokenize_datasets)
@@ -289,7 +289,7 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    if config.task_type == "pre_training":
+    if config.task_type == "pretraining":
 
         # Define a seperate training and validation data collator
         training_collator = DataCollatorForLanguageModeling(
@@ -306,7 +306,7 @@ def prepare_dataloaders(dataset: DatasetDict, tokenizer, config: DictConfig, col
             mlm_probability=config.mlm_probability
         )
 
-    elif config.task_type == "fine_tuning":
+    elif config.task_type == "finetuning":
         training_collator = validation_collator = collator_fn(tokenizer=tokenizer)
 
     # Prepare the dataloaders

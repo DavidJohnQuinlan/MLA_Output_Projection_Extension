@@ -75,7 +75,8 @@ class PreTrainingConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
-    pre_training_seeds: list[int] = MISSING
+    keep_last_n_checkpoints: int = MISSING
+    pretraining_seeds: list[int] = MISSING
 
 
 @dataclass
@@ -128,10 +129,11 @@ class FineTuningConfig:
     train_eval_steps: int = MISSING
     eval_steps: int = MISSING
     eval_metric: str = MISSING
-    pre_training_seed: int | None = None
-    fine_tuning_seeds: list[int] = MISSING
+    keep_last_n_checkpoints: int = MISSING
+    pretraining_seed: int | None = None
+    finetuning_seeds: list[int] = MISSING
 
 
 cs = ConfigStore.instance()
-cs.store(name="pre_training_schema", node=PreTrainingConfig)
-cs.store(name="fine_tuning_schema", node=FineTuningConfig)
+cs.store(name="pretraining_schema", node=PreTrainingConfig)
+cs.store(name="finetuning_schema", node=FineTuningConfig)

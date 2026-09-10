@@ -32,13 +32,13 @@ def get_config_name(base_model: str, architecture: str, task: str) -> str:
 def run_glue_benchmark(
         base_model: str,
         architecture: str,
-        pre_training_seed: int | None = None,
+        pretraining_seed: int | None = None,
         kv: int | None = None,
         q: int | None = None,
         o: int | None = None,
     ) -> None:
     """
-    Runs fine-tuning across all GLUE tasks for a single architecture.
+    Runs finetuning across all GLUE tasks for a single architecture.
 
     Each task is launched as a separate subprocess so that Hydra creates its own
     timestamped output directory and log file per task. A task that exits with a
@@ -55,7 +55,7 @@ def run_glue_benchmark(
     failed = []
     for task in GLUE_TASKS:
         config_name = get_config_name(base_model, architecture, task)
-        seed_label = str(pre_training_seed) if pre_training_seed is not None else "all"
+        seed_label = str(pretraining_seed) if pretraining_seed is not None else "all"
         print(f"\n--- {base_model} - {architecture} - {task.upper()} - {seed_label} ---")
         cmd = [sys.executable, "-m", "mla.model_training.model_finetuning", f"--config-name={config_name}"]
 
@@ -64,8 +64,8 @@ def run_glue_benchmark(
         if architecture in ["MHAE", "MLAE"]:
             cmd += [f"output_compression_dim={o}"]
 
-        if pre_training_seed is not None:
-            cmd.append(f"+pre_training_seed={pre_training_seed}")
+        if pretraining_seed is not None:
+            cmd.append(f"+pretraining_seed={pretraining_seed}")
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
@@ -82,12 +82,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_model", choices=["BERT", "GPT2"], required=True)
     parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
-    parser.add_argument("--pre_training_seed", required=False)
+    parser.add_argument("--pretraining_seed", required=False)
     parser.add_argument("--kv", type=int, default=None, required=False)
     parser.add_argument("--q", type=int, default=None, required=False)
     parser.add_argument("--o", type=int, default=None, required=False)
     args = parser.parse_args()
-    run_glue_benchmark(args.base_model, args.architecture, args.pre_training_seed, args.kv, args.q, args.o)
+    run_glue_benchmark(args.base_model, args.architecture, args.pretraining_seed, args.kv, args.q, args.o)
 
 if __name__ == "__main__":
     main()

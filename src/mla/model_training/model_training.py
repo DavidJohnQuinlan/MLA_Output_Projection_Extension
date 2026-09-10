@@ -3,6 +3,7 @@ import math
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Literal
 
 import torch
 import wandb.integration.torch.wandb_torch as wandb_torch
@@ -55,7 +56,8 @@ class BaseModelTraining(ABC):
         self.optimizer = self._build_optimizer(model, optimizer)
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)
         self.metric_fn = metric_fn()
-        self.model_file_path = paths.model_file_path
+        self.best_checkpoint_file_path = paths.best_checkpoint_file_path
+        self.recent_checkpoint_prefix = paths.recent_checkpoint_prefix
 
         self.global_step = 0
         self.last_logged_global_step = 0
@@ -278,10 +280,11 @@ class BaseModelTraining(ABC):
                                 self.model.train()
                                 self.metric_fn.reset()
                                 self._train_step_start_time = time.time()
+                                self.save_checkpoint(checkpoint_type="recent")
 
                                 # Save the best model
                                 if self._is_best_model(validation_loss, validation_metrics):
-                                    self.save_model()
+                                    self.save_checkpoint(checkpoint_type="best")
                                     self.best_validation_metrics = validation_metrics
                                     self.best_loss_metrics = validation_loss
         self._close_progress_bars()
@@ -337,20 +340,15 @@ class BaseModelTraining(ABC):
 
         return validation_loss, validation_metrics
 
-    def save_model(self) -> None:
+    def save_checkpoint(self, checkpoint_type: Literal["best", "recent"]) -> None:
         """
         Unwraps the model from the Accelerator environment and saves its state dict locally. Additionally, creates
-        a metadata json file assocaited with the saved model.
+        a metadata json file associated with the saved model.
         """
-        # Ensure the directory to store the model locally exist
-        self.model_file_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Unwrap the accelerator model
         unwrapped_model = self.accelerator.unwrap_model(self.model)
         model_to_save = unwrapped_model._orig_mod if hasattr(unwrapped_model, "_orig_mod") else unwrapped_model
-
-        # Save the unwrapped models state dict locally
-        self.accelerator.save(model_to_save.state_dict(), self.model_file_path)
 
         # Generate metadata
         metadata = {
@@ -358,11 +356,29 @@ class BaseModelTraining(ABC):
             "seed": self.seed,
             **get_run_metadata(self.wandb_id)
         }
-        self.model_file_path.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
 
+        if checkpoint_type == "best":
+            self.best_checkpoint_file_path.parent.mkdir(parents=True, exist_ok=True)
+            self.accelerator.save(model_to_save.state_dict(), self.best_checkpoint_file_path)
+            self.best_checkpoint_file_path.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
+        elif checkpoint_type == "recent":
+            self.recent_checkpoint_prefix.mkdir(parents=True, exist_ok=True)
+            checkpoint_name = self.recent_checkpoint_prefix / f"step_{self.global_step}.th"
+            self.accelerator.save(model_to_save.state_dict(), checkpoint_name)
+            checkpoint_name.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
+            self._prune_recent_checkpoints(keep=self.config.keep_last_n_checkpoints)
+
+    def _prune_recent_checkpoints(self, keep: int) -> None:
+        sorted_checkpoints = sorted(
+            self.recent_checkpoint_prefix.glob("step_*.th"), 
+            key=lambda p: int(p.stem.removeprefix("step_"))
+        )
+        for checkpoint in sorted_checkpoints[:-keep]:
+            checkpoint.unlink()
+            checkpoint.with_suffix(".json").unlink(missing_ok=True)
 
     @classmethod
-    def load_model(
+    def load_checkpoint(
         cls,
         model_class: type[torch.nn.Module],
         checkpoint_path: Path,
@@ -416,7 +432,7 @@ class ModelPreTraining(BaseModelTraining):
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
-            name=self.model_file_path.stem,
+            name=self.best_checkpoint_file_path.stem,
             job_type=self.config.job_type,
             config=wandb_cfg,
             tags=[config.attention_mechanism],
@@ -474,7 +490,7 @@ class ModelPreTraining(BaseModelTraining):
             return True
         return False
 
-    def train_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
+    def model_pretraining(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, validation_dataloader)
         wandb.unwatch()
         wandb.finish()
@@ -512,7 +528,7 @@ class ModelFineTuning(BaseModelTraining):
         wandb.init(
             project=self.config.experiment_project,
             group=self.config.experiment_name,
-            name=self.model_file_path.stem,
+            name=self.best_checkpoint_file_path.stem,
             job_type=self.config.job_type,
             config=wandb_cfg,
             tags=[config.attention_mechanism, config.dataset_config_name],
@@ -584,7 +600,7 @@ class ModelFineTuning(BaseModelTraining):
             return True
         return False
 
-    def fine_tune_model(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
+    def model_finetuning(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, validation_dataloader)
         wandb.unwatch()
         wandb.finish()
