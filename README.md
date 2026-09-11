@@ -147,6 +147,24 @@ uv run run_glue_benchmark --base_model {MODEL_NAME} --architecture {ATTENTION_AR
 
 With the parameters `kv_compression_dim`, `q_compression_dim` and `output_compression_dim` optional depending on the attention architecture.
 
+## Using DistributedDataParallel
+
+### Pretraining
+```bash
+uv run accelerate launch --multi_gpu --num_processes=2 \
+  -m mla.model_training.model_pretraining \
+  --config-name=GPT2/pretraining/tinygpt2_mha \
+  dataset_name=Salesforce/wikitext dataset_config_name=wikitext-2-raw-v1 \
+  max_load_pct=null train_token_budget=100_000 val_token_budget=10_000 \
+  max_steps=100 train_eval_steps=10 eval_steps=10 \
+  'pretraining_seeds=[42]'
+```
+### Finetuning
+
+```bash
+```
+
+
 ### Testing
 
 After making some changes one may wish to quickly test the harness to ensure that everything functions as expected. However, we do not want to pretrain on the full dataset, therefore, to simulate a pretraining run we can use the following command:

@@ -84,7 +84,7 @@ class BERTPretrainingStrategy(PreTrainingStrategy):
         Build a results summary dictionary for a pretraining run.
         """
         flops, macs, params = calculate_flop_metrics(model, config)
-        cost = measure_inference_cost(pretrainer.model, tokenizer, config, dtype=config.mixed_precision)
+        cost = measure_inference_cost(pretrainer.unwrapped_model, tokenizer, config, dtype=config.mixed_precision)
         training_compute = compute_training_compute(config, flops)
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)
@@ -146,7 +146,7 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
         Build a results summary dictionary for a pretraining run.
         """
         flops, macs, params = calculate_flop_metrics(model, config)
-        cost = measure_inference_cost(pretrainer.model, tokenizer, config, dtype=config.mixed_precision)
+        cost = measure_inference_cost(pretrainer.unwrapped_model, tokenizer, config, dtype=config.mixed_precision)
         training_compute = compute_training_compute(config, flops)
         activations_list = collect_attention_head_activations(pretrainer, val_loader)
         avg_cka = compute_model_cka(activations_list)

@@ -52,6 +52,13 @@ class LossMeter:
         else:
             logger.warning("NaN detected in LossMeter, skipping update.")
 
+    def reduce(self, accelerator) -> None:
+        """Combine sum/count across all processes into a global token-weighted average."""
+        t = torch.tensor([self.sum, self.count], device=accelerator.device)
+        total_sum, total_count = accelerator.reduce(t, reduction="sum").tolist()
+        self.sum, self.count = total_sum, total_count
+        self.avg = total_sum / total_count if total_count else 0.0
+
     def __str__(self) -> str:
         """
         Generates a scannable string profile displaying current and average progress.
@@ -70,6 +77,7 @@ class MetricEvaluationProtocol(Protocol):
     def reset(self) -> None: ...
     def update(self, logits, labels, mode) -> None: ...
     def compute(self) -> dict: ...
+    def reduce(self, accelerator) -> None: ...
 
 
 class MetricEvaluation:
@@ -132,6 +140,13 @@ class MetricEvaluation:
             # Check if target is in any of the 5 columns by expanding the targets array dimensions
             is_correct_t5 = t5_indices.eq(target.unsqueeze(1)).any(dim=1)
             self.correct_t5 += is_correct_t5.sum().item()
+
+    def reduce(self, accelerator):
+        t = torch.tensor(
+            [self.total_masked, self.correct_t1, self.correct_t5],
+            device=accelerator.device, dtype=torch.long
+        )
+        self.total_masked, self.correct_t1, self.correct_t5 = accelerator.reduce(t, reduction="sum").tolist()
 
     def compute(self) -> dict[str, float]:
         """
@@ -197,6 +212,10 @@ class CausalLMMetricEvaluation:
         self.total += target.numel()
         self.correct += (preds == target).sum().item()
 
+    def reduce(self, accelerator):
+        t = torch.tensor([self.total, self.correct], device=accelerator.device, dtype=torch.long)
+        self.total, self.correct = accelerator.reduce(t, reduction="sum").tolist()
+
     def compute(self) -> dict[str, float]:
         """
         Calculates final aggregated dataset accuracies based on collected counts.
@@ -252,6 +271,14 @@ class ClassificationMetricEvaluation:
         # Store for more complex metrics (F1, etc.)
         self.all_preds.extend(preds.detach().cpu().numpy())
         self.all_labels.extend(labels.detach().cpu().numpy())
+
+    def reduce(self, accelerator):
+        preds = torch.tensor(self.all_preds, device=accelerator.device)
+        labels = torch.tensor(self.all_labels, device=accelerator.device)
+        self.all_preds  = accelerator.gather(preds).cpu().tolist()
+        self.all_labels = accelerator.gather(labels).cpu().tolist()
+        t = torch.tensor([self.correct, self.total], device=accelerator.device, dtype=torch.long)
+        self.correct, self.total = accelerator.reduce(t, reduction="sum").tolist()
 
     def compute(self):
         """Calculates and returns the final metrics."""

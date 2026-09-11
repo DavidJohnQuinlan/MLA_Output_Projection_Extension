@@ -66,11 +66,12 @@ def model_pretraining(config: DictConfig) -> None:
         logger.info(f"(Seed={seed}): Starting pretraining — attention={config.attention_mechanism} lr={config.learning_rate} max_steps={config.max_steps}")
         pretraining.model_pretraining(training_dataloader=train_loader, validation_dataloader=validation_loader)
 
-        # Save results to central CSV
+        # Save results to central CSV (main process)
         results = strategy.build_results(pretraining, model, tokenizer, validation_loader, config, seed)
-        append_to_results_csv(results, results_csv_path)
-        print_output_table(title="Pretraining Complete", results=results)
-        logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretraining.best_validation_loss:4f}")
+        if pretraining.accelerator.is_main_process:
+            append_to_results_csv(results, results_csv_path)
+            print_output_table(title="Pretraining Complete", results=results)
+            logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretraining.best_validation_loss:4f}")
 
 
 if __name__ == "__main__":

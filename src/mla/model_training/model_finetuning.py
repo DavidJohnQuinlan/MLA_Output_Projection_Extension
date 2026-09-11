@@ -4,6 +4,7 @@ from pathlib import Path
 
 import hydra
 import torch
+from accelerate import PartialState
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import AdamW, Optimizer
@@ -126,18 +127,19 @@ def finetuning_checkpoint(
                     run.loss.avg, config.eval_metric, run.metrics[config.eval_metric])
         runs.append(run)
 
-    aggregated = {
-        "pretraining_model_name": checkpoint_path.stem,
-        "loss":     [r.loss.avg for r in runs],
-        "accuracy": [r.metrics["accuracy"] for r in runs],
-        "f1":       [r.metrics["f1"] for r in runs],
-        "mcc":      [r.metrics["mcc"] for r in runs],
-        "seed_to_wandb": {r.finetuning_seed: r.wandb_id for r in runs},
-    }
-    results = strategy.build_results(aggregated, config, pretraining_seed)
-    append_to_results_csv(results, results_csv)
-    print_output_table(title=f"Fine Tuning Complete (pretraining seed {pretraining_seed})", results=results)
-    logger.info("pretraining_seed=%d  all finetuning seeds complete for %s", pretraining_seed, config.experiment_name)
+    if PartialState().is_main_process:
+        aggregated = {
+            "pretraining_model_name": checkpoint_path.stem,
+            "loss":     [r.loss.avg for r in runs],
+            "accuracy": [r.metrics["accuracy"] for r in runs],
+            "f1":       [r.metrics["f1"] for r in runs],
+            "mcc":      [r.metrics["mcc"] for r in runs],
+            "seed_to_wandb": {r.finetuning_seed: r.wandb_id for r in runs},
+        }
+        results = strategy.build_results(aggregated, config, pretraining_seed)
+        append_to_results_csv(results, results_csv)
+        print_output_table(title=f"Fine Tuning Complete (pretraining seed {pretraining_seed})", results=results)
+        logger.info("pretraining_seed=%d  all finetuning seeds complete for %s", pretraining_seed, config.experiment_name)
 
 
 def _finetuning_setup(config: DictConfig) -> tuple[Path, FineTuningStrategy, Path]:

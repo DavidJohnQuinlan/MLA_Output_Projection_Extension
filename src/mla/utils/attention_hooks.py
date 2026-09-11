@@ -1,5 +1,4 @@
 import torch
-from torch import nn
 from torch.utils.data import DataLoader
 
 from mla.model_training.model_training import BaseModelTraining
@@ -22,16 +21,12 @@ class AttentionHeadHook:
         hidden_size (int): Model hidden dimension.
         head_dim (int): Per-head feature dimension.
     """
-    def __init__(self, model: nn.Module):
+    def __init__(self, model):
         """
         Args:
             model (nn.Module): The model to hook into. Compiled models are unwrapped automatically.
         """
-        if hasattr(model, "_orig_mod"):
-            self.model = model._orig_mod
-        else:
-            self.model = model
-
+        self.model = model
         self.handles = []
         self.activations = {}
 
@@ -133,7 +128,7 @@ def collect_attention_head_activations(pretrainer: BaseModelTraining, validation
 
     # Register the hooks
     torch._dynamo.reset()
-    collector = AttentionHeadHook(pretrainer.model)
+    collector = AttentionHeadHook(pretrainer.unwrapped_model)
     collector.register()
 
     # Output the loss/metric values

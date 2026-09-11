@@ -1,5 +1,6 @@
 import json
 import math
+import shutil
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -43,7 +44,6 @@ class BaseModelTraining(ABC):
         config: DictConfig,
         paths: Paths,
     ):
-
         self.training_bar = None
         self.validation_bar = None
         self.scheduler = None
@@ -63,11 +63,16 @@ class BaseModelTraining(ABC):
         self.last_logged_global_step = 0
         self.epoch = 0
         self.best_validation_loss = float("inf")
-        self._train_step_start_time = None
-        self._validation_step_start_time = None
+        self.best_metric = -float("inf")
         self.best_validation_metrics = None
         self.best_loss_metrics = None
+        self._train_step_start_time = None
+        self._validation_step_start_time = None
 
+    @property
+    def unwrapped_model(self) -> nn.Module:
+         model = getattr(self.model, "_orig_mod", self.model)
+         return getattr(model, "module", model)
 
     def _setup_scheduler(self) -> None:
         """
@@ -147,8 +152,14 @@ class BaseModelTraining(ABC):
 
         # Create the tqdm progress bars for the first time
         else:
-            self.training_bar = tqdm(total=len(training_dataloader), position=0, desc="Training - Epoch 1", leave=True)
-            self.validation_bar = tqdm(total=len(validation_dataloader), position=1, desc="Validation", leave=True)
+            self.training_bar = tqdm(
+                total=len(training_dataloader), position=0, desc="Training - Epoch 1", leave=True,
+                disable=not self.accelerator.is_main_process,
+            )
+            self.validation_bar = tqdm(
+                total=len(validation_dataloader), position=1, desc="Validation", leave=True,
+                disable=not self.accelerator.is_main_process,
+            )
 
     def _update_progress_bars(self, mode: str, loss_value: float) -> None:
         """
@@ -199,10 +210,9 @@ class BaseModelTraining(ABC):
             training_dataloader (DataLoader): The pre-batched training dataset.
             validation_dataloader (DataLoader): The pre-batched validation dataset.
         """
-        training_dataloader, validation_dataloader = self.accelerator.prepare(
-            training_dataloader, validation_dataloader
-        )
+        training_dataloader = self.accelerator.prepare(training_dataloader)
         self._setup_scheduler()
+        self._resume_from_checkpoint()
         self._init_progress_bars(training_dataloader=training_dataloader, validation_dataloader=validation_dataloader, reset=False)
         self._train_step_start_time = time.time()
 
@@ -273,20 +283,17 @@ class BaseModelTraining(ABC):
                                 self._train_step_start_time = time.time()
 
                         if (self.global_step % self.config.eval_steps == 0 and self.global_step > 0):
-                            if self.accelerator.is_main_process:
+                            validation_loss, validation_metrics = self.eval_model(validation_dataloader=validation_dataloader, training_eval=True)
+                            self.model.train()
+                            self.metric_fn.reset()
+                            self._train_step_start_time = time.time()
+                            self._save_checkpoint(checkpoint_type="recent")
 
-                                # Evaluate the current model on the validation dataset
-                                validation_loss, validation_metrics = self.eval_model(validation_dataloader=validation_dataloader, training_eval=True)
-                                self.model.train()
-                                self.metric_fn.reset()
-                                self._train_step_start_time = time.time()
-                                self.save_checkpoint(checkpoint_type="recent")
-
-                                # Save the best model
-                                if self._is_best_model(validation_loss, validation_metrics):
-                                    self.save_checkpoint(checkpoint_type="best")
-                                    self.best_validation_metrics = validation_metrics
-                                    self.best_loss_metrics = validation_loss
+                            if self._is_best_model(validation_loss, validation_metrics):
+                                self.best_validation_metrics = validation_metrics
+                                self.best_loss_metrics = validation_loss
+                                if self.accelerator.is_main_process:
+                                    self._save_checkpoint(checkpoint_type="best")
         self._close_progress_bars()
 
     def eval_model(self, validation_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
@@ -311,46 +318,36 @@ class BaseModelTraining(ABC):
 
         with torch.no_grad():
             for batch in validation_dataloader:
-
-                # Forward pass
                 outputs = self.model(**batch)
-
-                # Calculate and update validation loss and metrics
                 loss = outputs.loss.detach().cpu().item()
                 n_tokens = (batch["labels"] != -100).sum().item()
                 validation_loss.update(loss, n=n_tokens)
                 self._update_progress_bars(mode=mode, loss_value=validation_loss.avg)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
 
+            validation_loss.reduce(self.accelerator)
+            self.metric_fn.reduce(self.accelerator)
             validation_metrics = self.metric_fn.compute()
-            elapsed = time.time() - self._validation_step_start_time
-            steps_per_sec = len(validation_dataloader) / elapsed
-            samples_per_sec = len(validation_dataloader.dataset) / elapsed
 
-            # If evaluating post training run
-            if training_eval:
+            if training_eval and self.accelerator.is_main_process:
+                elapsed = time.time() - self._validation_step_start_time
                 self._log_metrics(
                     mode="validation",
                     loss=validation_loss,
                     metrics=validation_metrics,
-                    steps_per_sec=steps_per_sec,
-                    samples_per_sec=samples_per_sec,
+                    steps_per_sec=len(validation_dataloader) / elapsed,
+                    samples_per_sec=len(validation_dataloader.dataset) / elapsed,
                 )
             self.metric_fn.reset()
 
         return validation_loss, validation_metrics
 
-    def save_checkpoint(self, checkpoint_type: Literal["best", "recent"]) -> None:
+    def _save_checkpoint(self, checkpoint_type: Literal["best", "recent"]) -> None:
         """
         Unwraps the model from the Accelerator environment and saves its state dict locally. Additionally, creates
         a metadata json file associated with the saved model.
         """
-
-        # Unwrap the accelerator model
-        unwrapped_model = self.accelerator.unwrap_model(self.model)
-        model_to_save = unwrapped_model._orig_mod if hasattr(unwrapped_model, "_orig_mod") else unwrapped_model
-
-        # Generate metadata
+        model_to_save = self.unwrapped_model
         metadata = {
             "config": model_to_save.config.to_dict(),
             "seed": self.seed,
@@ -359,23 +356,64 @@ class BaseModelTraining(ABC):
 
         if checkpoint_type == "best":
             self.best_checkpoint_file_path.parent.mkdir(parents=True, exist_ok=True)
-            self.accelerator.save(model_to_save.state_dict(), self.best_checkpoint_file_path)
-            self.best_checkpoint_file_path.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
+            tmp_th = self.best_checkpoint_file_path.with_suffix(".th.tmp")
+            tmp_json = self.best_checkpoint_file_path.with_suffix(".json.tmp")
+            self.accelerator.save(model_to_save.state_dict(), tmp_th)
+            tmp_json.write_text(json.dumps(metadata, indent=4, default=str))
+            tmp_json.replace(self.best_checkpoint_file_path.with_suffix(".json"))
+            tmp_th.replace(self.best_checkpoint_file_path)
+
         elif checkpoint_type == "recent":
-            self.recent_checkpoint_prefix.mkdir(parents=True, exist_ok=True)
-            checkpoint_name = self.recent_checkpoint_prefix / f"step_{self.global_step}.th"
-            self.accelerator.save(model_to_save.state_dict(), checkpoint_name)
-            checkpoint_name.with_suffix(".json").write_text(json.dumps(metadata, indent=4, default=str))
-            self._prune_recent_checkpoints(keep=self.config.keep_last_n_checkpoints)
+            checkpoint_dir = self.recent_checkpoint_prefix / f"step_{self.global_step}"
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            self.accelerator.save_state(str(checkpoint_dir))
+
+            if self.accelerator.is_main_process:
+                extra_state = {
+                    "step": self.global_step,
+                    "epoch": self.epoch,
+                    "wandb_id": self.wandb_id,
+                    "best_score": self.best_validation_loss,
+                    "best_metric": self.best_metric,
+                }
+                checkpoint_dir_extra_state = checkpoint_dir / "extra_state.json"
+                checkpoint_dir_extra_state.write_text(json.dumps(extra_state, indent=4))
+                self._prune_recent_checkpoints(keep=self.config.keep_last_n_checkpoints)
 
     def _prune_recent_checkpoints(self, keep: int) -> None:
+        if keep < 1:
+            return
         sorted_checkpoints = sorted(
-            self.recent_checkpoint_prefix.glob("step_*.th"),
-            key=lambda p: int(p.stem.removeprefix("step_"))
+            (p for p in self.recent_checkpoint_prefix.glob("step_*") if p.is_dir()),
+            key=lambda p: int(p.name.removeprefix("step_"))
         )
         for checkpoint in sorted_checkpoints[:-keep]:
-            checkpoint.unlink()
-            checkpoint.with_suffix(".json").unlink(missing_ok=True)
+            shutil.rmtree(checkpoint)
+
+    def _find_latest_checkpoint(self) -> Path | None:
+        checkpoints = [p for p in self.recent_checkpoint_prefix.glob("step_*")
+                if p.is_dir() and (p / "extra_state.json").exists()]
+        return max(checkpoints, key=lambda p: int(p.name.removeprefix("step_"))) if checkpoints else None
+
+    def _prior_wandb_id(self) -> str | None:
+        checkpoint = self._find_latest_checkpoint()
+        if checkpoint is None:
+            return None
+        return json.loads((checkpoint / "extra_state.json").read_text()).get("wandb_id")
+
+    def _resume_from_checkpoint(self) -> None:
+        checkpoint = self._find_latest_checkpoint()
+        if checkpoint is None:
+            return None
+        self.accelerator.load_state(str(checkpoint))
+        extra_state = json.loads((checkpoint / "extra_state.json").read_text())
+        self.global_step = extra_state["step"]
+        self.epoch = extra_state.get("epoch")
+        self.best_validation_loss = extra_state["best_score"]
+        self.best_metric = extra_state["best_metric"]
+        self.wandb_id = extra_state["wandb_id"]
+        self.last_logged_global_step = self.global_step
+        self.accelerator.print(f"Resumed from {checkpoint.name} (step {self.global_step})")
 
     @classmethod
     def load_checkpoint(
@@ -396,7 +434,6 @@ class BaseModelTraining(ABC):
 
         model = model_class(model_config)
         state_dict = torch.load(checkpoint_path, weights_only=True, map_location=device)
-        state_dict = {k.removeprefix("_orig_mod."): v for k, v in state_dict.items()}
         model.load_state_dict(state_dict)
         return model.to(device)
 
@@ -429,17 +466,23 @@ class ModelPreTraining(BaseModelTraining):
         self.wandb_mode = setup_wandb()
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
         wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
-        wandb.init(
-            project=self.config.experiment_project,
-            group=self.config.experiment_name,
-            name=self.best_checkpoint_file_path.stem,
-            job_type=self.config.job_type,
-            config=wandb_cfg,
-            tags=[config.attention_mechanism],
-            mode=self.wandb_mode,
-        )
-        self.wandb_id = wandb.run.id if wandb.run is not None else None
-        wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
+        if self.accelerator.is_main_process:
+            prior_wandb_id = self._prior_wandb_id()
+            resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
+            wandb.init(
+                project=self.config.experiment_project,
+                group=self.config.experiment_name,
+                name=self.best_checkpoint_file_path.stem,
+                job_type=self.config.job_type,
+                config=wandb_cfg,
+                tags=[config.attention_mechanism],
+                mode=self.wandb_mode,
+                **resume_kwargs,
+            )
+            self.wandb_id = wandb.run.id if wandb.run is not None else None
+            wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
+        else:
+            self.wandb_id = None
 
     def _log_metrics(
         self,
@@ -486,14 +529,16 @@ class ModelPreTraining(BaseModelTraining):
         """
         if validation_loss.avg < self.best_validation_loss:
             self.best_validation_loss = validation_loss.avg
-            wandb.run.summary["best_validation_loss"] = validation_loss.avg
+            if wandb.run is not None:
+                wandb.run.summary["best_validation_loss"] = validation_loss.avg
             return True
         return False
 
     def model_pretraining(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, validation_dataloader)
-        wandb.unwatch()
-        wandb.finish()
+        if self.accelerator.is_main_process:
+            wandb.unwatch()
+            wandb.finish()
 
 
 class ModelFineTuning(BaseModelTraining):
@@ -525,22 +570,27 @@ class ModelFineTuning(BaseModelTraining):
         self.wandb_mode = setup_wandb()
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
         wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
-        wandb.init(
-            project=self.config.experiment_project,
-            group=self.config.experiment_name,
-            name=self.best_checkpoint_file_path.stem,
-            job_type=self.config.job_type,
-            config=wandb_cfg,
-            tags=[config.attention_mechanism, config.dataset_config_name],
-            mode=self.wandb_mode,
-        )
-        self.wandb_id = wandb.run.id if wandb.run is not None else None
-        wandb.define_metric("validation/accuracy", summary="max")
-        wandb.define_metric("validation/loss", summary="min")
-        wandb.define_metric("validation/f1", summary="max")
-        wandb.define_metric("validation/mcc", summary="max")
-        wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        self.best_metric = -float("inf")
+        if self.accelerator.is_main_process:
+            prior_wandb_id = self._prior_wandb_id()
+            resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
+            wandb.init(
+                project=self.config.experiment_project,
+                group=self.config.experiment_name,
+                name=self.best_checkpoint_file_path.stem,
+                job_type=self.config.job_type,
+                config=wandb_cfg,
+                tags=[config.attention_mechanism, config.dataset_config_name],
+                mode=self.wandb_mode,
+                **resume_kwargs,
+            )
+            self.wandb_id = wandb.run.id if wandb.run is not None else None
+            wandb.define_metric("validation/accuracy", summary="max")
+            wandb.define_metric("validation/loss", summary="min")
+            wandb.define_metric("validation/f1", summary="max")
+            wandb.define_metric("validation/mcc", summary="max")
+            wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
+        else:
+            self.wandb_id = None
 
     def _log_metrics(
         self,
@@ -595,12 +645,14 @@ class ModelFineTuning(BaseModelTraining):
         eval_metric = self.config.eval_metric
         if validation_metrics[eval_metric] > self.best_metric:
             self.best_metric = validation_metrics[eval_metric]
-            wandb.run.summary[f"best_{self.config.eval_metric}"] = validation_metrics[self.config.eval_metric]
-            wandb.run.summary["best_validation_loss"] = validation_loss.avg
+            if wandb.run is not None:
+                wandb.run.summary[f"best_{self.config.eval_metric}"] = validation_metrics[self.config.eval_metric]
+                wandb.run.summary["best_validation_loss"] = validation_loss.avg
             return True
         return False
 
     def model_finetuning(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
         self._run_optimization_loop(training_dataloader, validation_dataloader)
-        wandb.unwatch()
-        wandb.finish()
+        if self.accelerator.is_main_process:
+            wandb.unwatch()
+            wandb.finish()
