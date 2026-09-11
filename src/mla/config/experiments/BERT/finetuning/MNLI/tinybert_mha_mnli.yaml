@@ -14,7 +14,7 @@ q_compression_dim: null
 output_compression_dim: null
 
 # Dataset
-dataset_name: glue
+dataset_name: nyu-mll/glue
 dataset_config_name: mnli
 drop_last: True
 sentence_keys: ["premise", "hypothesis"]

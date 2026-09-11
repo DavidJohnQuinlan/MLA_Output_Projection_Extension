@@ -14,7 +14,7 @@ q_compression_dim: ???
 output_compression_dim: null
 
 # Dataset
-dataset_name: glue
+dataset_name: nyu-mll/glue
 dataset_config_name: cola
 drop_last: True
 sentence_keys: ["sentence"]
