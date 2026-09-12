@@ -11,7 +11,8 @@ from mla.config.schema import validate_compression_dims
 from mla.model_training.model_training import ModelPreTraining
 from mla.model_training.strategies import _PRETRAINING_STRATEGIES
 from mla.utils.data_preparation import import_and_prepare_data, prepare_dataloaders
-from mla.utils.utils import append_to_results_csv, configure_logging, print_output_table, set_all_seeds
+from mla.utils.reporting import append_to_results_csv, print_output_table
+from mla.utils.setup import configure_logging, set_all_seeds
 
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)

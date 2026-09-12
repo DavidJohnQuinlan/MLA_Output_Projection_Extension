@@ -19,7 +19,9 @@ from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 import wandb
 from mla.config.paths import Paths
 from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
-from mla.utils.utils import compute_compression_ratio, get_device, get_run_metadata, safe_hook_variable_gradient_stats, setup_wandb
+from mla.utils.reporting import get_run_metadata
+from mla.utils.profiling import compute_compression_ratio
+from mla.utils.setup import get_device, safe_hook_variable_gradient_stats, setup_wandb
 
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
