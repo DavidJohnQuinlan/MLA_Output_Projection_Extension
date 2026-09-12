@@ -13,7 +13,6 @@ from omegaconf import DictConfig, OmegaConf
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
 import wandb
@@ -22,6 +21,7 @@ from mla.utils.metrics import LossMeter, MetricEvaluationProtocol
 from mla.utils.reporting import get_run_metadata
 from mla.utils.profiling import compute_compression_ratio
 from mla.utils.setup import get_device, safe_hook_variable_gradient_stats, setup_wandb
+from mla.utils.progress import ProgressBars
 
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
@@ -46,10 +46,7 @@ class BaseModelTraining(ABC):
         config: DictConfig,
         paths: Paths,
     ):
-        self.training_bar = None
-        self.validation_bar = None
         self.scheduler = None
-
         self.config = config
         self.accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -127,64 +124,6 @@ class BaseModelTraining(ABC):
             optimizer = optimizer(model.parameters(), lr=self.config.learning_rate)
         return optimizer
 
-    def _init_progress_bars(
-        self,
-        training_dataloader: DataLoader | None = None,
-        validation_dataloader: DataLoader | None = None,
-        reset: bool = False,
-        mode: str | None = None,
-        epoch: int | None = None
-    ) -> None:
-        """
-        Initializes or resets training/validation tqdm progress bars.
-        """
-
-        # Updates existing progress bars without creating new objects
-        if reset:
-            if mode == "train" and training_dataloader is not None:
-                self.training_bar.set_description(f"Epoch {epoch}")
-                self.training_bar.reset(total=len(training_dataloader))
-
-            elif mode == "validation" and validation_dataloader is not None:
-                self.validation_bar.set_description(f"Eval @ Step {self.global_step}")
-                self.validation_bar.reset(total=len(validation_dataloader))
-
-            elif mode == "post_training_eval" and validation_dataloader is not None:
-                return
-
-        # Create the tqdm progress bars for the first time
-        else:
-            self.training_bar = tqdm(
-                total=len(training_dataloader), position=0, desc="Training - Epoch 1", leave=True,
-                disable=not self.accelerator.is_main_process,
-            )
-            self.validation_bar = tqdm(
-                total=len(validation_dataloader), position=1, desc="Validation", leave=True,
-                disable=not self.accelerator.is_main_process,
-            )
-
-    def _update_progress_bars(self, mode: str, loss_value: float) -> None:
-        """
-        Update the training or validation tqdm progress bar.
-        """
-        if mode == "train":
-            self.training_bar.update(1)
-            self.training_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
-
-        elif mode == "validation":
-            self.validation_bar.update(1)
-            self.validation_bar.set_postfix(loss=f"{loss_value:.4f}", step=self.global_step)
-
-        elif mode == "post_training_eval":
-            return
-
-    def _close_progress_bars(self) -> None:
-        """
-        Close the progress bars once we complete model training.
-        """
-        if self.training_bar: self.training_bar.close()
-        if self.validation_bar: self.validation_bar.close()
-
     @abstractmethod
     def _is_best_model(
         self,
@@ -215,7 +154,7 @@ class BaseModelTraining(ABC):
         training_dataloader = self.accelerator.prepare(training_dataloader)
         self._setup_scheduler()
         self._resume_from_checkpoint()
-        self._init_progress_bars(training_dataloader=training_dataloader, validation_dataloader=validation_dataloader, reset=False)
+        self.progress = ProgressBars(disable=not self.accelerator.is_main_process)
         self._train_step_start_time = time.time()
 
         # For each step
@@ -227,7 +166,7 @@ class BaseModelTraining(ABC):
             self.optimizer.zero_grad()
             training_loss = LossMeter()
             self.metric_fn.reset()
-            self._init_progress_bars(training_dataloader=training_dataloader, reset=True, mode="train", epoch=self.epoch)
+            self.progress.create(n_train=len(training_dataloader), n_val=len(validation_dataloader))
 
             # For each batch (starting at 1)
             for batch in training_dataloader:
@@ -246,7 +185,7 @@ class BaseModelTraining(ABC):
                     self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode="train")
                     n_tokens = (batch["labels"] != -100).sum().item()
                     training_loss.update(loss.item(), n=n_tokens)
-                    self._update_progress_bars(mode="train", loss_value=training_loss.avg)
+                    self.progress.update_train(loss_value=training_loss.avg, global_step=self.global_step)
 
                     # Update the gradients
                     if self.accelerator.sync_gradients:
@@ -296,7 +235,7 @@ class BaseModelTraining(ABC):
                                 self.best_loss_metrics = validation_loss
                                 if self.accelerator.is_main_process:
                                     self._save_checkpoint(checkpoint_type="best")
-        self._close_progress_bars()
+        self.progress.close()
 
     def eval_model(self, validation_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
         """
@@ -315,7 +254,7 @@ class BaseModelTraining(ABC):
         validation_loss = LossMeter()
 
         validation_dataloader = self.accelerator.prepare(validation_dataloader)
-        self._init_progress_bars(validation_dataloader=validation_dataloader, reset=True, mode=mode)
+        self.progress.start_eval(n_val=len(validation_dataloader), global_step=self.global_step)
         self._validation_step_start_time = time.time()
 
         with torch.no_grad():
@@ -324,7 +263,7 @@ class BaseModelTraining(ABC):
                 loss = outputs.loss.detach().cpu().item()
                 n_tokens = (batch["labels"] != -100).sum().item()
                 validation_loss.update(loss, n=n_tokens)
-                self._update_progress_bars(mode=mode, loss_value=validation_loss.avg)
+                self.progress.update_eval(loss_value=validation_loss.avg, global_step=self.global_step)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
 
             validation_loss.reduce(self.accelerator)
