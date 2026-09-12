@@ -1,10 +1,6 @@
-import json
 import math
-import shutil
 import time
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Literal
 
 import torch
 import wandb.integration.torch.wandb_torch as wandb_torch
@@ -13,15 +9,16 @@ from omegaconf import DictConfig, OmegaConf
 from torch import nn
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
-from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
+from transformers import get_cosine_schedule_with_warmup
 
 import wandb
 from mla.config.paths import Paths
+from mla.utils.checkpointing import Checkpointer
 from mla.utils.metrics import LossMeter, MetricEvaluationProtocol
-from mla.utils.reporting import get_run_metadata
 from mla.utils.profiling import compute_compression_ratio
-from mla.utils.setup import get_device, safe_hook_variable_gradient_stats, setup_wandb
 from mla.utils.progress import ProgressBars
+from mla.utils.reporting import get_run_metadata
+from mla.utils.setup import safe_hook_variable_gradient_stats, setup_wandb
 
 wandb_torch.TorchHistory._hook_variable_gradient_stats = safe_hook_variable_gradient_stats
 
@@ -54,7 +51,14 @@ class BaseModelTraining(ABC):
         )
         self.optimizer = self._build_optimizer(model, optimizer)
         self.model, self.optimizer = self.accelerator.prepare(model, self.optimizer)
+        self.checkpointer = Checkpointer(
+            accelerator=self.accelerator,
+            best_checkpoint_file_path=paths.best_checkpoint_file_path,
+            recent_checkpoint_prefix=paths.recent_checkpoint_prefix,
+            keep_last_n=config.keep_last_n_checkpoints,
+        )
         self.metric_fn = metric_fn()
+
         self.best_checkpoint_file_path = paths.best_checkpoint_file_path
         self.recent_checkpoint_prefix = paths.recent_checkpoint_prefix
 
@@ -72,6 +76,30 @@ class BaseModelTraining(ABC):
     def unwrapped_model(self) -> nn.Module:
          model = getattr(self.model, "_orig_mod", self.model)
          return getattr(model, "module", model)
+
+    def _metadata(self) -> dict:
+        return {
+            "config": self.unwrapped_model.config.to_dict(),
+            "seed": self.seed,
+            **get_run_metadata(self.wandb_id)
+        }
+
+    def _extra_state(self) -> dict:
+        return {
+            "step": self.global_step,
+            "epoch": self.epoch,
+            "best_score": float(self.best_validation_loss),
+            "best_metric": float(self.best_metric),
+            "wandb_id": self.wandb_id
+        }
+
+    def _restore_state(self, state: dict) -> None:
+        self.global_step = state["step"]
+        self.epoch = state["epoch"]
+        self.best_validation_loss = state["best_score"]
+        self.best_metric = state["best_metric"]
+        self.wandb_id = state["wandb_id"]
+        self.last_logged_global_step = self.global_step
 
     def _setup_scheduler(self) -> None:
         """
@@ -153,7 +181,9 @@ class BaseModelTraining(ABC):
         """
         training_dataloader = self.accelerator.prepare(training_dataloader)
         self._setup_scheduler()
-        self._resume_from_checkpoint()
+        state = self.checkpointer.resume()
+        if state:
+            self._restore_state(state)
         self.progress = ProgressBars(disable=not self.accelerator.is_main_process)
         self._train_step_start_time = time.time()
 
@@ -228,13 +258,13 @@ class BaseModelTraining(ABC):
                             self.model.train()
                             self.metric_fn.reset()
                             self._train_step_start_time = time.time()
-                            self._save_checkpoint(checkpoint_type="recent")
+                            self.checkpointer.save_recent(self.global_step, self._extra_state())
 
                             if self._is_best_model(validation_loss, validation_metrics):
                                 self.best_validation_metrics = validation_metrics
                                 self.best_loss_metrics = validation_loss
                                 if self.accelerator.is_main_process:
-                                    self._save_checkpoint(checkpoint_type="best")
+                                    self.checkpointer.save_best(self.unwrapped_model, self._metadata())
         self.progress.close()
 
     def eval_model(self, validation_dataloader: DataLoader, training_eval: bool=True) -> tuple[LossMeter, dict]:
@@ -283,101 +313,6 @@ class BaseModelTraining(ABC):
 
         return validation_loss, validation_metrics
 
-    def _save_checkpoint(self, checkpoint_type: Literal["best", "recent"]) -> None:
-        """
-        Unwraps the model from the Accelerator environment and saves its state dict locally. Additionally, creates
-        a metadata json file associated with the saved model.
-        """
-        model_to_save = self.unwrapped_model
-        metadata = {
-            "config": model_to_save.config.to_dict(),
-            "seed": self.seed,
-            **get_run_metadata(self.wandb_id)
-        }
-
-        if checkpoint_type == "best":
-            self.best_checkpoint_file_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_th = self.best_checkpoint_file_path.with_suffix(".th.tmp")
-            tmp_json = self.best_checkpoint_file_path.with_suffix(".json.tmp")
-            self.accelerator.save(model_to_save.state_dict(), tmp_th)
-            tmp_json.write_text(json.dumps(metadata, indent=4, default=str))
-            tmp_json.replace(self.best_checkpoint_file_path.with_suffix(".json"))
-            tmp_th.replace(self.best_checkpoint_file_path)
-
-        elif checkpoint_type == "recent":
-            checkpoint_dir = self.recent_checkpoint_prefix / f"step_{self.global_step}"
-            checkpoint_dir.mkdir(parents=True, exist_ok=True)
-            self.accelerator.save_state(str(checkpoint_dir))
-
-            if self.accelerator.is_main_process:
-                extra_state = {
-                    "step": self.global_step,
-                    "epoch": self.epoch,
-                    "wandb_id": self.wandb_id,
-                    "best_score": self.best_validation_loss,
-                    "best_metric": self.best_metric,
-                }
-                checkpoint_dir_extra_state = checkpoint_dir / "extra_state.json"
-                checkpoint_dir_extra_state.write_text(json.dumps(extra_state, indent=4))
-                self._prune_recent_checkpoints(keep=self.config.keep_last_n_checkpoints)
-
-    def _prune_recent_checkpoints(self, keep: int) -> None:
-        if keep < 1:
-            return
-        sorted_checkpoints = sorted(
-            (p for p in self.recent_checkpoint_prefix.glob("step_*") if p.is_dir()),
-            key=lambda p: int(p.name.removeprefix("step_"))
-        )
-        for checkpoint in sorted_checkpoints[:-keep]:
-            shutil.rmtree(checkpoint)
-
-    def _find_latest_checkpoint(self) -> Path | None:
-        checkpoints = [p for p in self.recent_checkpoint_prefix.glob("step_*")
-                if p.is_dir() and (p / "extra_state.json").exists()]
-        return max(checkpoints, key=lambda p: int(p.name.removeprefix("step_"))) if checkpoints else None
-
-    def _prior_wandb_id(self) -> str | None:
-        checkpoint = self._find_latest_checkpoint()
-        if checkpoint is None:
-            return None
-        return json.loads((checkpoint / "extra_state.json").read_text()).get("wandb_id")
-
-    def _resume_from_checkpoint(self) -> None:
-        checkpoint = self._find_latest_checkpoint()
-        if checkpoint is None:
-            return None
-        self.accelerator.load_state(str(checkpoint))
-        extra_state = json.loads((checkpoint / "extra_state.json").read_text())
-        self.global_step = extra_state["step"]
-        self.epoch = extra_state.get("epoch")
-        self.best_validation_loss = extra_state["best_score"]
-        self.best_metric = extra_state["best_metric"]
-        self.wandb_id = extra_state["wandb_id"]
-        self.last_logged_global_step = self.global_step
-        self.accelerator.print(f"Resumed from {checkpoint.name} (step {self.global_step})")
-
-    @classmethod
-    def load_checkpoint(
-        cls,
-        model_class: type[torch.nn.Module],
-        checkpoint_path: Path,
-        config_class: type[PretrainedConfig],
-        config_overrides: dict | None = None,
-    ) -> torch.nn.Module:
-        """
-        Instantiate a model from its checkpoint's own saved config, then load weights.
-        """
-        device = get_device()
-        metadata = json.loads(checkpoint_path.with_suffix(".json").read_text())
-        model_config = config_class.from_dict(metadata["config"])
-        for k, v in (config_overrides or {}).items():
-            setattr(model_config, k, v)
-
-        model = model_class(model_config)
-        state_dict = torch.load(checkpoint_path, weights_only=True, map_location=device)
-        model.load_state_dict(state_dict)
-        return model.to(device)
-
 
 class ModelPreTraining(BaseModelTraining):
     """
@@ -408,7 +343,7 @@ class ModelPreTraining(BaseModelTraining):
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
         wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
         if self.accelerator.is_main_process:
-            prior_wandb_id = self._prior_wandb_id()
+            prior_wandb_id = self.checkpointer.prior_wandb_id()
             resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
             wandb.init(
                 project=self.config.experiment_project,
@@ -512,7 +447,7 @@ class ModelFineTuning(BaseModelTraining):
         wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
         wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
         if self.accelerator.is_main_process:
-            prior_wandb_id = self._prior_wandb_id()
+            prior_wandb_id = self.checkpointer.prior_wandb_id()
             resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
             wandb.init(
                 project=self.config.experiment_project,

@@ -20,9 +20,11 @@ from mla.models.GPT2.config import GPT2Config
 from mla.models.GPT2.heads import GPT2ForSequenceClassification, GPT2LMHeadModel
 from mla.utils.attention_hooks import collect_attention_head_activations
 from mla.utils.attention_utils import compute_model_cka
+from mla.utils.checkpointing import load_checkpoint
 from mla.utils.metrics import CausalLMMetricEvaluation, ClassificationMetricEvaluation, MetricEvaluation, MetricEvaluationProtocol
 from mla.utils.profiling import calculate_flop_metrics, compute_training_compute, measure_inference_cost
 from mla.utils.reporting import get_run_metadata
+
 
 class PreTrainingStrategy(ABC):
     @abstractmethod
@@ -179,7 +181,7 @@ class GPT2PretrainingStrategy(PreTrainingStrategy):
 
 class BERTFineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        bert_model = ModelPreTraining.load_checkpoint(
+        bert_model = load_checkpoint(
             model_class=BertForMaskedLM,
             checkpoint_path=paths.pretraining_checkpoint_path,
             config_class=BertConfig,
@@ -217,7 +219,7 @@ class BERTFineTuningStrategy(FineTuningStrategy):
 
 class GPT2FineTuningStrategy(FineTuningStrategy):
     def build_model(self, config: DictConfig, paths: Paths) -> nn.Module:
-        gpt2_model = ModelPreTraining.load_checkpoint(
+        gpt2_model = load_checkpoint(
             model_class=GPT2LMHeadModel,
             checkpoint_path=paths.pretraining_checkpoint_path,
             config_class=GPT2Config,

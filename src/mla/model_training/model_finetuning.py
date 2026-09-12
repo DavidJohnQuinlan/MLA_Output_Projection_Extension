@@ -20,7 +20,6 @@ from mla.utils.metrics import LossMeter, MetricEvaluationProtocol
 from mla.utils.reporting import append_to_results_csv, print_output_table
 from mla.utils.setup import configure_logging, set_all_seeds
 
-
 logger = logging.getLogger(__name__)
 
 config_path = str(Path(__file__).parent.parent / "config" / "experiments")
