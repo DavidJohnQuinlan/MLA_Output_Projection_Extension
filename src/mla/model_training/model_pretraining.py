@@ -65,7 +65,7 @@ def model_pretraining(config: DictConfig) -> None:
         )
 
         logger.info(f"(Seed={seed}): Starting pretraining — attention={config.attention_mechanism} lr={config.learning_rate} max_steps={config.max_steps}")
-        pretraining.model_pretraining(training_dataloader=train_loader, validation_dataloader=validation_loader)
+        pretraining.model_training(training_dataloader=train_loader, validation_dataloader=validation_loader)
 
         # Save results to central CSV (main process)
         results = strategy.build_results(pretraining, model, tokenizer, validation_loader, config, seed)

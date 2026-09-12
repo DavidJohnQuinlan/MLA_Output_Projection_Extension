@@ -58,9 +58,7 @@ class BaseModelTraining(ABC):
             keep_last_n=config.keep_last_n_checkpoints,
         )
         self.metric_fn = metric_fn()
-
-        self.best_checkpoint_file_path = paths.best_checkpoint_file_path
-        self.recent_checkpoint_prefix = paths.recent_checkpoint_prefix
+        self.run_name = paths.best_checkpoint_file_path.stem
 
         self.global_step = 0
         self.last_logged_global_step = 0
@@ -92,6 +90,35 @@ class BaseModelTraining(ABC):
             "best_metric": float(self.best_metric),
             "wandb_id": self.wandb_id
         }
+
+    def _init_wandb(self, tags: list[str], summary_metrics: dict[str, str] | None = None) -> None:
+        """
+        Init W&B on the main process (resuming a prior run if found) and watch the model.
+        """
+        if not self.accelerator.is_main_process:
+            self.wandb_id = None
+            return
+
+        self.wandb_mode = setup_wandb()
+        wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
+        wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
+
+        prior_wandb_id = self.checkpointer.prior_wandb_id()
+        resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
+        wandb.init(
+            project=self.config.experiment_project,
+            group=self.config.experiment_name,
+            name=self.run_name,
+            job_type=self.config.job_type,
+            config=wandb_cfg,
+            tags=tags,
+            mode=self.wandb_mode,
+            **resume_kwargs,
+        )
+        self.wandb_id = wandb.run.id if wandb.run is not None else None
+        for metric, summary in (summary_metrics or {}).items():
+            wandb.define_metric(metric, summary=summary)
+        wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
 
     def _restore_state(self, state: dict) -> None:
         self.global_step = state["step"]
@@ -313,6 +340,12 @@ class BaseModelTraining(ABC):
 
         return validation_loss, validation_metrics
 
+    def model_training(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
+        self._run_optimization_loop(training_dataloader, validation_dataloader)
+        if self.accelerator.is_main_process:
+            wandb.unwatch()
+            wandb.finish()
+
 
 class ModelPreTraining(BaseModelTraining):
     """
@@ -339,26 +372,7 @@ class ModelPreTraining(BaseModelTraining):
         super().__init__(model, optimizer, metric_fn, config, paths)
         self.seed = seed
         self.model = torch.compile(self.model)
-        self.wandb_mode = setup_wandb()
-        wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
-        wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
-        if self.accelerator.is_main_process:
-            prior_wandb_id = self.checkpointer.prior_wandb_id()
-            resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
-            wandb.init(
-                project=self.config.experiment_project,
-                group=self.config.experiment_name,
-                name=self.best_checkpoint_file_path.stem,
-                job_type=self.config.job_type,
-                config=wandb_cfg,
-                tags=[config.attention_mechanism],
-                mode=self.wandb_mode,
-                **resume_kwargs,
-            )
-            self.wandb_id = wandb.run.id if wandb.run is not None else None
-            wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        else:
-            self.wandb_id = None
+        self._init_wandb(tags=[config.attention_mechanism])
 
     def _log_metrics(
         self,
@@ -410,12 +424,6 @@ class ModelPreTraining(BaseModelTraining):
             return True
         return False
 
-    def model_pretraining(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
-        self._run_optimization_loop(training_dataloader, validation_dataloader)
-        if self.accelerator.is_main_process:
-            wandb.unwatch()
-            wandb.finish()
-
 
 class ModelFineTuning(BaseModelTraining):
     """
@@ -443,30 +451,15 @@ class ModelFineTuning(BaseModelTraining):
     ):
         super().__init__(model, optimizer, metric_fn, config, paths)
         self.seed = seed
-        self.wandb_mode = setup_wandb()
-        wandb_cfg = OmegaConf.to_container(self.config, resolve=True)
-        wandb_cfg["kv_ratio"] = compute_compression_ratio(self.config)
-        if self.accelerator.is_main_process:
-            prior_wandb_id = self.checkpointer.prior_wandb_id()
-            resume_kwargs = {"id": prior_wandb_id, "resume": "allow"} if prior_wandb_id else {}
-            wandb.init(
-                project=self.config.experiment_project,
-                group=self.config.experiment_name,
-                name=self.best_checkpoint_file_path.stem,
-                job_type=self.config.job_type,
-                config=wandb_cfg,
-                tags=[config.attention_mechanism, config.dataset_config_name],
-                mode=self.wandb_mode,
-                **resume_kwargs,
-            )
-            self.wandb_id = wandb.run.id if wandb.run is not None else None
-            wandb.define_metric("validation/accuracy", summary="max")
-            wandb.define_metric("validation/loss", summary="min")
-            wandb.define_metric("validation/f1", summary="max")
-            wandb.define_metric("validation/mcc", summary="max")
-            wandb.watch(self.model, log="all", log_freq=self.config.eval_steps)
-        else:
-            self.wandb_id = None
+        self._init_wandb(
+            tags=[config.attention_mechanism, config.dataset_config_name],
+            summary_metrics={
+                "validation/accuracy": "max",
+                "validation/loss": "min",
+                "validation/f1": "max",
+                "validation/mcc": "max"
+            },
+        )
 
     def _log_metrics(
         self,
@@ -526,9 +519,3 @@ class ModelFineTuning(BaseModelTraining):
                 wandb.run.summary["best_validation_loss"] = validation_loss.avg
             return True
         return False
-
-    def model_finetuning(self, training_dataloader: DataLoader, validation_dataloader: DataLoader) -> None:
-        self._run_optimization_loop(training_dataloader, validation_dataloader)
-        if self.accelerator.is_main_process:
-            wandb.unwatch()
-            wandb.finish()

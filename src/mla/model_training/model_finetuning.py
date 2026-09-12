@@ -78,7 +78,7 @@ def model_finetuning(
     """
     # Fine tune the model
     finetuning = ModelFineTuning(model, optimizer, metric_fn, config, paths, finetuning_seed)
-    finetuning.model_finetuning(training_dataloader=train_dataloader, validation_dataloader=validation_dataloader)
+    finetuning.model_training(training_dataloader=train_dataloader, validation_dataloader=validation_dataloader)
 
     # Output the loss/metric values
     validation_loss, validation_metrics = finetuning.eval_model(validation_dataloader=validation_dataloader, training_eval=False)
