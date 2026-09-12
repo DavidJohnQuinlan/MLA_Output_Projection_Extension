@@ -162,8 +162,11 @@ uv run accelerate launch --multi_gpu --num_processes=2 \
 ### Finetuning
 
 ```bash
+uv run accelerate launch --multi_gpu --num_processes=2 \
+  -m mla.model_training.model_finetuning \
+  --config-name=GPT2/finetuning/COLA/tinygpt2_mha_cola \
+  pretraining_seed=42 max_steps=2 train_eval_steps=1 eval_steps=1 'finetuning_seeds=[42]'
 ```
-
 
 ### Testing
 

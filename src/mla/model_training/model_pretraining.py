@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import hydra
+import torch.distributed as dist
 from omegaconf import DictConfig
 from torch.optim import AdamW
 from transformers import AutoTokenizer
@@ -74,6 +75,8 @@ def model_pretraining(config: DictConfig) -> None:
             print_output_table(title="Pretraining Complete", results=results)
             logger.info(f"(Seed={seed}): Pretraining complete — best_loss={pretraining.best_validation_loss:4f}")
 
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 if __name__ == "__main__":
     model_pretraining()

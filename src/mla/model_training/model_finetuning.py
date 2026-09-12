@@ -4,6 +4,7 @@ from pathlib import Path
 
 import hydra
 import torch
+import torch.distributed as dist
 from accelerate import PartialState
 from omegaconf import DictConfig
 from torch import nn
@@ -168,6 +169,9 @@ def run_finetuning(config: DictConfig) -> None:
     logger.info("Discovered %d pretraining checkpoint(s): seeds=%s", len(checkpoints), [s for s, _ in checkpoints])
     for pretraining_seed, checkpoint_path in checkpoints:
         finetuning_checkpoint(config, strategy, root_dir, results_csv, checkpoint_path, pretraining_seed)
+
+    if dist.is_initialized():
+        dist.destroy_process_group()
 
 
 if __name__ == "__main__":
