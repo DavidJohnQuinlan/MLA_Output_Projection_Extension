@@ -18,7 +18,7 @@ from transformers import PretrainedConfig, get_cosine_schedule_with_warmup
 
 import wandb
 from mla.config.paths import Paths
-from mla.utils.model_utils import LossMeter, MetricEvaluationProtocol
+from mla.utils.metrics import LossMeter, MetricEvaluationProtocol
 from mla.utils.reporting import get_run_metadata
 from mla.utils.profiling import compute_compression_ratio
 from mla.utils.setup import get_device, safe_hook_variable_gradient_stats, setup_wandb
