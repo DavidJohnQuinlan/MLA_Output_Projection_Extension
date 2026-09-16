@@ -116,8 +116,8 @@ To install this project please follow these steps:
 
 ```bash
 # 1. Clone repository
-git clone git@github.com:DavidJohnQuinlan/Multihead_Latent_Attention_Extension.git
-cd Multihead_Latent_Attention_Extension
+git clone git@github.com:DavidJohnQuinlan/MLA_Output_Projection_Extension.git
+cd MLA_Output_Projection_Extension
 
 # 2. Create a local virtual environment
 uv sync
