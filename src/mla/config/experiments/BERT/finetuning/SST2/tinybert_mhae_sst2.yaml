@@ -1,0 +1,48 @@
+# @package _global_
+defaults:
+  - /finetuning_schema
+  - _self_
+
+experiment_name: TinyBERT_MHAE_SST2_o${output_compression_dim}
+base_model: BERT
+attention_mechanism: MHAE
+job_type: finetuning
+experiment_project: TinyBERT
+model_config_name: bert-base-uncased
+kv_compression_dim: null
+q_compression_dim: null
+output_compression_dim: ???
+
+# Dataset
+dataset_name: nyu-mll/glue
+dataset_config_name: sst2
+drop_last: True
+sentence_keys: ["sentence"]
+task_type: finetuning
+parallel_processes: 8
+num_workers: 0
+pin_memory: False
+
+# Optimizer
+max_steps: 10520 # 2104 * 5
+warmup: True
+warmup_rate: 0.05
+max_norm: 1.0
+learning_rate: 2e-5
+weight_decay: 0.01
+
+# Model
+hidden_size: 312
+max_seq_length: 128
+num_labels: 2
+mixed_precision: "no"
+
+# Training
+batch_size: 32
+eval_batch_size: 872
+gradient_accumulation_steps: 1
+train_eval_steps: 10
+eval_steps: 500
+eval_metric: "accuracy"
+keep_last_n_checkpoints: 3
+finetuning_seeds: [42, 123, 456, 789, 999]
