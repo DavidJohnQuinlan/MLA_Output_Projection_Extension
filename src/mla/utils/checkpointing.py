@@ -76,7 +76,7 @@ class Checkpointer:
         """
         checkpoint_dir = self.recent_checkpoint_prefix / f"step_{global_step}"
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.accelerator.save_state(str(checkpoint_dir))
+        self.accelerator.save_state(str(checkpoint_dir), safe_serialization=False)
 
         if self.accelerator.is_main_process:
             checkpoint_dir_extra_state = checkpoint_dir / "extra_state.json"

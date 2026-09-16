@@ -4,7 +4,7 @@ from tqdm import tqdm
 class ProgressBars:
     def __init__(self, disable: bool = False):
         self.disable = disable
-        self.train = self.val = None
+        self.training_bar = self.validation_bar = None
 
     def create(self, n_train: int, n_val: int):
         """

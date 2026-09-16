@@ -36,6 +36,7 @@ def run_glue_benchmark(
         kv: int | None = None,
         q: int | None = None,
         o: int | None = None,
+        extra: list[str] | None = None
     ) -> None:
     """
     Runs finetuning across all GLUE tasks for a single architecture.
@@ -63,9 +64,11 @@ def run_glue_benchmark(
             cmd += [f"kv_compression_dim={kv}", f"q_compression_dim={q}"]
         if architecture in ["MHAE", "MLAE"]:
             cmd += [f"output_compression_dim={o}"]
-
         if pretraining_seed is not None:
             cmd.append(f"+pretraining_seed={pretraining_seed}")
+        if extra is not None:
+            cmd += extra
+
         try:
             subprocess.run(cmd, check=True)
         except subprocess.CalledProcessError:
@@ -86,8 +89,8 @@ def main():
     parser.add_argument("--kv", type=int, default=None, required=False)
     parser.add_argument("--q", type=int, default=None, required=False)
     parser.add_argument("--o", type=int, default=None, required=False)
-    args = parser.parse_args()
-    run_glue_benchmark(args.base_model, args.architecture, args.pretraining_seed, args.kv, args.q, args.o)
+    args, extra = parser.parse_known_args()
+    run_glue_benchmark(args.base_model, args.architecture, args.pretraining_seed, args.kv, args.q, args.o, extra)
 
 if __name__ == "__main__":
     main()

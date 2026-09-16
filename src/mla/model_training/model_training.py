@@ -212,6 +212,7 @@ class BaseModelTraining(ABC):
         if state:
             self._restore_state(state)
         self.progress = ProgressBars(disable=not self.accelerator.is_main_process)
+        self.progress.create(n_train=len(training_dataloader), n_val=len(validation_dataloader))
         self._train_step_start_time = time.time()
 
         # For each step
@@ -223,7 +224,7 @@ class BaseModelTraining(ABC):
             self.optimizer.zero_grad()
             training_loss = LossMeter()
             self.metric_fn.reset()
-            self.progress.create(n_train=len(training_dataloader), n_val=len(validation_dataloader))
+            self.progress.start_epoch(n_train=len(training_dataloader), epoch=self.epoch)
 
             # For each batch (starting at 1)
             for batch in training_dataloader:
