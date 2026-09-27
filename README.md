@@ -423,7 +423,7 @@ More details of this matrix absorption can be found in [`docs/output_latent_abso
 **Tooling**
 - Wolf, T. et al. *Transformers: State-of-the-Art Natural Language Processing.* EMNLP 2020. [HuggingFace Transformers](https://github.com/huggingface/transformers).
 - HuggingFace [Accelerate](https://github.com/huggingface/accelerate) — distributed / mixed-precision training.
-- Yadan, O. *Hydra — A framework for elegantly configuring compflex applications.* 2019. [GitHub](https://github.com/facebookresearch/hydra).
+- Yadan, O. *Hydra — A framework for elegantly configuring complex applications.* 2019. [GitHub](https://github.com/facebookresearch/hydra).
 - [calflops](https://github.com/MrYxJ/calculate-flops.pytorch) — FLOPs / parameter accounting.
 
 See [`docs/output_latent_absorption.md`](docs/output_latent_absorption.md) for the full matrix-absorption derivation.
