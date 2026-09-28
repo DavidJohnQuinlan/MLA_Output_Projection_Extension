@@ -312,7 +312,8 @@ class BaseModelTraining(ABC):
         validation_loss = LossMeter()
 
         validation_dataloader = self.accelerator.prepare(validation_dataloader)
-        self.progress.start_eval(n_val=len(validation_dataloader), global_step=self.global_step)
+        if training_eval:
+            self.progress.start_eval(n_val=len(validation_dataloader), global_step=self.global_step)
         self._validation_step_start_time = time.time()
 
         with torch.no_grad():
@@ -321,7 +322,8 @@ class BaseModelTraining(ABC):
                 loss = outputs.loss.detach().cpu().item()
                 n_tokens = (batch["labels"] != -100).sum().item()
                 validation_loss.update(loss, n=n_tokens)
-                self.progress.update_eval(loss_value=validation_loss.avg, global_step=self.global_step)
+                if training_eval:
+                    self.progress.update_eval(loss_value=validation_loss.avg, global_step=self.global_step)
                 self.metric_fn.update(logits=outputs.logits, labels=batch["labels"], mode=mode)
 
             validation_loss.reduce(self.accelerator)
