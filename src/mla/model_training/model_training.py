@@ -63,7 +63,9 @@ class BaseModelTraining(ABC):
         self.global_step = 0
         self.last_logged_global_step = 0
         self.epoch = 0
+        self.last_validation_loss = float("inf")
         self.best_validation_loss = float("inf")
+        self.last_validation_metrics = None
         self.best_metric = -float("inf")
         self.best_validation_metrics = None
         self.best_loss_metrics = None
@@ -86,6 +88,7 @@ class BaseModelTraining(ABC):
         return {
             "step": self.global_step,
             "epoch": self.epoch,
+            "last_score": float(self.last_validation_loss),
             "best_score": float(self.best_validation_loss),
             "best_metric": float(self.best_metric),
             "wandb_id": self.wandb_id
@@ -123,6 +126,7 @@ class BaseModelTraining(ABC):
     def _restore_state(self, state: dict) -> None:
         self.global_step = state["step"]
         self.epoch = state["epoch"]
+        self.last_validation_loss = state.get("last_score", float("inf"))
         self.best_validation_loss = state["best_score"]
         self.best_metric = state["best_metric"]
         self.wandb_id = state["wandb_id"]
@@ -182,8 +186,8 @@ class BaseModelTraining(ABC):
     @abstractmethod
     def _is_best_model(
         self,
-        validation_loss: LossMeter,
-        validation_metrics: dict
+        validation_loss: LossMeter | None,
+        validation_metrics: dict | None
     ) -> bool: ...
 
     @abstractmethod
@@ -330,6 +334,10 @@ class BaseModelTraining(ABC):
             self.metric_fn.reduce(self.accelerator)
             validation_metrics = self.metric_fn.compute()
 
+            if training_eval:
+                self.last_validation_loss = validation_loss.avg
+                self.last_validation_metrics = validation_metrics
+
             if training_eval and self.accelerator.is_main_process:
                 elapsed = time.time() - self._validation_step_start_time
                 self._log_metrics(
@@ -423,7 +431,8 @@ class ModelPreTraining(BaseModelTraining):
         if validation_loss.avg < self.best_validation_loss:
             self.best_validation_loss = validation_loss.avg
             if wandb.run is not None:
-                wandb.run.summary["best_validation_loss"] = validation_loss.avg
+                wandb.run.summary["last_validation_loss"] = self.last_validation_loss
+                wandb.run.summary["best_validation_loss"] = self.best_validation_loss
             return True
         return False
 
@@ -513,12 +522,11 @@ class ModelFineTuning(BaseModelTraining):
         """
         Defines whether the current model is better than the best metric value.
         """
-
         eval_metric = self.config.eval_metric
         if validation_metrics[eval_metric] > self.best_metric:
             self.best_metric = validation_metrics[eval_metric]
             if wandb.run is not None:
                 wandb.run.summary[f"best_{self.config.eval_metric}"] = validation_metrics[self.config.eval_metric]
-                wandb.run.summary["best_validation_loss"] = validation_loss.avg
+                wandb.run.summary["last_validation_loss"] = self.last_validation_loss
             return True
         return False
