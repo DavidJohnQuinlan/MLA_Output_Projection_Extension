@@ -1,7 +1,6 @@
 import math
 import time
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import torch
 import wandb.integration.torch.wandb_torch as wandb_torch
@@ -66,6 +65,7 @@ class BaseModelTraining(ABC):
         self.epoch = 0
         self.last_validation_loss = float("inf")
         self.best_validation_loss = float("inf")
+        self.last_validation_metrics = None
         self.best_metric = -float("inf")
         self.best_validation_metrics = None
         self.best_loss_metrics = None
@@ -186,8 +186,8 @@ class BaseModelTraining(ABC):
     @abstractmethod
     def _is_best_model(
         self,
-        validation_loss: Optional[LossMeter],
-        validation_metrics: Optional[dict]
+        validation_loss: LossMeter | None,
+        validation_metrics: dict | None
     ) -> bool: ...
 
     @abstractmethod
@@ -336,6 +336,7 @@ class BaseModelTraining(ABC):
 
             if training_eval:
                 self.last_validation_loss = validation_loss.avg
+                self.last_validation_metrics = validation_metrics
 
             if training_eval and self.accelerator.is_main_process:
                 elapsed = time.time() - self._validation_step_start_time
@@ -521,7 +522,6 @@ class ModelFineTuning(BaseModelTraining):
         """
         Defines whether the current model is better than the best metric value.
         """
-
         eval_metric = self.config.eval_metric
         if validation_metrics[eval_metric] > self.best_metric:
             self.best_metric = validation_metrics[eval_metric]
