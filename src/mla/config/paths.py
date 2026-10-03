@@ -67,7 +67,7 @@ def discover_pretraining_checkpoints(root_dir, config) -> list[tuple[str, Path]]
     Raises:
         FileNotFoundError: If no checkpoint matches the variant in config.
     """
-    pretraining_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining/checkpoints/best"
+    pretraining_path = root_dir / TRAINING_MODELS_DIR / config.base_model / config.experiment_project / "pretraining/checkpoints/best"
 
     def matches(c: dict) -> bool:
         return (c["attention_mechanism"] == config.attention_mechanism
@@ -113,10 +113,10 @@ def get_pretraining_paths(root_dir: Path, config: DictConfig, pretraining_seed: 
     Returns:
         Paths: Populated paths for pretraining data and model checkpoint.
     """
-    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "checkpoints"
+    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.base_model / config.experiment_project / "pretraining" / "checkpoints"
     model_name = build_model_name(config, pretraining_seed)
     return Paths(
-        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "pretraining" / build_dataset_name(config),
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.base_model / config.experiment_project / "pretraining" / build_dataset_name(config),
         best_checkpoint_file_path = checkpoints_dir / "best" / f"{model_name}.th",
         recent_checkpoint_prefix = checkpoints_dir / "recent" / model_name,
     )
@@ -140,9 +140,9 @@ def get_finetuning_paths(
         Paths: Populated paths for fine-tuning data, pretraining checkpoint, and fine-tuned model checkpoint.
     """
     model_name = f"{pretraining_checkpoint_path.stem}__{config.dataset_config_name}_ft{finetuning_seed}"
-    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / config.dataset_config_name / "checkpoints"
+    checkpoints_dir = root_dir / TRAINING_MODELS_DIR / config.base_model / config.experiment_project / "finetuning" / config.dataset_config_name / "checkpoints"
     return Paths(
-        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.experiment_project / "finetuning" / build_dataset_name(config),
+        tokenized_data_path = root_dir / TRAINING_DATA_DIR / config.base_model / config.experiment_project / "finetuning" / build_dataset_name(config),
         pretraining_checkpoint_path = pretraining_checkpoint_path,
         best_checkpoint_file_path =  checkpoints_dir / "best" /  f"{model_name}.th",
         recent_checkpoint_prefix = checkpoints_dir / "recent" / model_name

@@ -5,7 +5,7 @@ import sys
 GLUE_TASKS = ["rte", "mrpc", "cola", "sst2", "qnli", "qqp", "mnli"]
 
 
-def get_config_name(base_model: str, architecture: str, task: str) -> str:
+def get_config_name(config_dir: str, config_root_name: str, architecture: str, task: str) -> str:
     """
     Builds the Hydra config name for a given architecture, task, and compression dimensions.
 
@@ -14,7 +14,8 @@ def get_config_name(base_model: str, architecture: str, task: str) -> str:
     finetuning config directory.
 
     Args:
-        base_model: One of "BERT" or "GPT2".
+        config_dir: GPT2/TinyGPT2, GPT2/GPT2Small, BERT/TinyBERT, or similar.
+        config_root_name: Root config file name, tinygpt2, gpt2small, tinybert, or similar.
         architecture: One of "MHA", "MHAE", "MLA", or "MLAE".
         task: GLUE task name in any case (e.g. "sst2", "mrpc").
 
@@ -23,14 +24,13 @@ def get_config_name(base_model: str, architecture: str, task: str) -> str:
     """
     task = task.lower()
     TASK = task.upper()
-    base_model = base_model.lower()
-    BASE_MODEL = base_model.upper()
     architecture = architecture.lower()
-    return f"{BASE_MODEL}/finetuning/{TASK}/tiny{base_model}_{architecture}_{task}"
+    return f"{config_dir}/finetuning/{TASK}/{config_root_name}_{architecture}_{task}"
 
 
 def run_glue_benchmark(
-        base_model: str,
+        config_dir: str,
+        config_root_name: str,
         architecture: str,
         pretraining_seed: int | None = None,
         kv: int | None = None,
@@ -47,7 +47,8 @@ def run_glue_benchmark(
     A summary of any failures is printed after all tasks complete.
 
     Args:
-        base_model: Base model - "BERT" or "GPT2".
+        config_dir: Base model and model type path - GPT2/TinyGPT2, GPT2/GPT2Small, BERT/TinyBERT, or similar.
+        config_root_name: Root config file name, tinygpt2, gpt2small, tinybert, or similar.
         architecture: Attention mechanism to benchmark — "MHA", "MHAE", "MLA", or "MLAE".
         kv: KV compression dimension used to resolve the config filename (MLA/MLAE only).
         q: Query compression dimension used to resolve the config filename (MLA/MLAE only).
@@ -55,9 +56,9 @@ def run_glue_benchmark(
     """
     failed = []
     for task in GLUE_TASKS:
-        config_name = get_config_name(base_model, architecture, task)
+        config_name = get_config_name(config_dir, config_root_name, architecture, task)
         seed_label = str(pretraining_seed) if pretraining_seed is not None else "all"
-        print(f"\n--- {base_model} - {architecture} - {task.upper()} - {seed_label} ---")
+        print(f"\n--- {config_dir} - {architecture} - {task.upper()} - {seed_label} ---")
         cmd = [sys.executable, "-m", "mla.model_training.model_finetuning", f"--config-name={config_name}"]
 
         if architecture in ["MLA", "MLAE"]:
@@ -83,14 +84,15 @@ def run_glue_benchmark(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_model", choices=["BERT", "GPT2"], required=True)
+    parser.add_argument("--config_dir", choices=["GPT2/TinyGPT2", "GPT2/GPT2Small", "BERT/TinyBERT"], required=True)
+    parser.add_argument("--root_config_name", choices=["tinygpt2", "gpt2small", "tinybert"], required=True)
     parser.add_argument("--architecture", choices=["MHA", "MHAE", "MLA", "MLAE"], required=True)
     parser.add_argument("--pretraining_seed", required=False)
     parser.add_argument("--kv", type=int, default=None, required=False)
     parser.add_argument("--q", type=int, default=None, required=False)
     parser.add_argument("--o", type=int, default=None, required=False)
     args, extra = parser.parse_known_args()
-    run_glue_benchmark(args.base_model, args.architecture, args.pretraining_seed, args.kv, args.q, args.o, extra)
+    run_glue_benchmark(args.config_dir, args.root_config_name, args.architecture, args.pretraining_seed, args.kv, args.q, args.o, extra)
 
 if __name__ == "__main__":
     main()

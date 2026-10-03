@@ -129,18 +129,18 @@ Once everything is installed you can start utilising this repository. Step one r
 
 ```bash
 # 1. (Required) Start pretraining GPT2 MHA on a small training budget
-uv run pretraining --config-name=GPT2/pretraining/tinygpt2_mha \
+uv run pretraining --config-name=GPT2/TinyGPT2/pretraining/tinygpt2_mha \
   dataset_name=Salesforce/wikitext dataset_config_name=wikitext-2-raw-v1 \
   max_load_pct=null train_token_budget=10_000 val_token_budget=1_000 \
   max_steps=25 train_eval_steps=5 eval_steps=5 'pretraining_seeds=[42]'
 
 # 2. Once completed pretraining start finetuning on a single GLUE task e.g. CoLA with a small training budget
-uv run finetuning --config-name=GPT2/finetuning/COLA/tinygpt2_mha_cola \
+uv run finetuning --config-name=GPT2/TinyGPT2/finetuning/COLA/tinygpt2_mha_cola \
   max_steps=25 train_eval_steps=5 eval_steps=5 \
   pretraining_seed=42 'finetuning_seeds=[42]'
 
 # 3. Run finetuning on all GLUE tasks, with a small training budget
-uv run run_glue_benchmark --base_model GPT2 --architecture MHA \
+uv run run_glue_benchmark --config_dir GPT2/TinyGPT2 --root_config_name tinygpt2 --architecture MHA \
   max_steps=25 train_eval_steps=5 eval_steps=5 \
   pretraining_seed=42 'finetuning_seeds=[42]'
 ```
@@ -197,11 +197,12 @@ uv run finetuning --config-name=GPT2/finetuning/COLA/tinygpt2_mlae_cola \
 And in the case that one wishes to run the full suite of GLUE tasks, use the following command (template and concrete example):
 
 ```bash
-uv run run_glue_benchmark --base_model {MODEL_NAME} --architecture {ATTENTION_ARCHITECTURE} \
+uv run run_glue_benchmark --config_dir {BASE_MODEL/MODEL_TYPE} --root_config_name {root_config_file_name} \
+  --architecture {ATTENTION_ARCHITECTURE} \
   --kv {kv_compression_dim} --q {q_compression_dim} --o {output_compression_dim} \
   --pretraining_seed {pretraining_seed}
 
-uv run run_glue_benchmark --base_model GPT2 --architecture MLAE \
+uv run run_glue_benchmark --config_dir GPT2/TinyGPT2 --root_config_name tinygpt2 --architecture MLAE \
   --kv 64 --q 64 --o 64 --pretraining_seed 42
 ```
 
@@ -248,13 +249,15 @@ To run the suite of GLUE finetuning tasks across multiple GPUs, use the followin
 ```bash
 uv run accelerate launch --multi_gpu --num_processes={num_processes} \
   -m mla.model_training.run_glue_benchmark \
-  --base_model {MODEL_NAME} --architecture {ATTENTION_ARCHITECTURE} \
+  --config_dir {BASE_MODEL/MODEL_TYPE} --root_config_name {root_config_file_name}
+  --architecture {ATTENTION_ARCHITECTURE} \
   --kv {kv_compression_dim} --q {q_compression_dim} --o {output_compression_dim} \
   --pretraining_seed {pretraining_seed} 'finetuning_seeds=[{finetuning_seeds}]'
 
 uv run accelerate launch --multi_gpu --num_processes=2 \
   -m mla.model_training.run_glue_benchmark \
-  --base_model GPT2 --architecture MLAE \
+  --config_dir GPT2/TinyGPT2 --root_config_name tinygpt2 \
+  --architecture MLAE \
   --kv 64 --q 64 --o 64 \
   --pretraining_seed 42 'finetuning_seeds=[42]'
 ```

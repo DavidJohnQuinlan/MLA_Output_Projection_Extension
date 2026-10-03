@@ -152,11 +152,11 @@ def _finetuning_setup(config: DictConfig) -> tuple[Path, FineTuningStrategy, Pat
     validate_compression_dims(config)
     root_dir = Path(hydra.utils.get_original_cwd())
     strategy = _FINETUNING_STRATEGIES[config.base_model]
-    results_csv = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "finetuning" / "finetuning_results.csv"
+    results_csv = root_dir / TRAINING_MODELS_DIR / config.base_model / config.experiment_project / "finetuning" / "finetuning_results.csv"
     return root_dir, strategy, results_csv
 
 
-@hydra.main(version_base=None, config_path=config_path, config_name="GPT2/finetuning/RTE/tinygpt2_mha_rte")
+@hydra.main(version_base=None, config_path=config_path, config_name="GPT2/TinyGPT2/finetuning/RTE/tinygpt2_mha_rte")
 def run_finetuning(config: DictConfig) -> None:
     """
     Finetune all discovered pretraining checkpoint for the model variant as defined by the supplied config.

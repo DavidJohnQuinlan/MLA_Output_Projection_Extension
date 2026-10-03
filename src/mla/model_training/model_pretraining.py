@@ -22,7 +22,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 config_path = str(Path(__file__).parent.parent / "config" / "experiments")
 
 
-@hydra.main(version_base=None, config_path=config_path, config_name="GPT2/pretraining/tinygpt2_mha")
+@hydra.main(version_base=None, config_path=config_path, config_name="GPT2/TinyGPT2/pretraining/tinygpt2_mha")
 def model_pretraining(config: DictConfig) -> None:
     """
     Entry point for pre-training a BERT/GPT2 model.
@@ -41,7 +41,7 @@ def model_pretraining(config: DictConfig) -> None:
 
     data_paths = get_pretraining_paths(root_dir, config)
     datasets = import_and_prepare_data(tokenizer, config, data_paths.tokenized_data_path)
-    results_csv_path = root_dir / TRAINING_MODELS_DIR / config.experiment_project / "pretraining" / "pretraining_results.csv"
+    results_csv_path = root_dir / TRAINING_MODELS_DIR / config.base_model / config.experiment_project / "pretraining" / "pretraining_results.csv"
 
     # Independent pretraining run per seed
     for seed in config.pretraining_seeds:
